@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import FastApiMCP
 
 from app.core.config import settings
-from app.api.routes import auth, profile, timetable
+from app.api.routes import auth, profile, timetable, homework
 
 # Create FastAPI app
 app = FastAPI(
@@ -28,6 +28,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(timetable.router, prefix="/api/timetable", tags=["Timetable"])
+app.include_router(homework.router, prefix="/api/homework", tags=["Homework"])
 
 # Mount MCP server — exclude legacy endpoints to avoid confusion
 mcp = FastApiMCP(
@@ -51,6 +52,7 @@ async def root():
             "auth": "/api/auth",
             "profile": "/api/profile",
             "timetable": "/api/timetable",
+            "homework": "/api/homework",
         }
     }
 

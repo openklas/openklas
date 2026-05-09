@@ -389,47 +389,89 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse timetable response: {e}")
     
-    def get_university_schedule(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    # def get_university_schedule(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    #     """
+    #     Get university academic schedule (학사일정) from KLAS for a date range.
+
+    #     Args:
+    #         start_date: Start date YYYY-MM-DD (e.g. "2026-03-01").
+    #         end_date: End date YYYY-MM-DD (e.g. "2026-06-30").
+
+    #     Returns:
+    #         List of schedule items (raw KLAS response items).
+
+    #     Raises:
+    #         ConnectionError: If request fails
+    #         ValueError: If response cannot be parsed
+    #     """
+    #     try:
+    #         # KLAS often expects YYYYMMDD for date params
+    #         start_ymd = start_date.replace("-", "")
+    #         end_ymd = end_date.replace("-", "")
+    #         response = self.session.post(
+    #             settings.KLAS_SCHEDULE_URL,
+    #             json={
+    #                 "startDate": start_ymd,
+    #                 "endDate": end_ymd,
+    #             },
+    #             headers={"Content-Type": "application/json; charset=UTF-8"},
+    #         )
+    #         response.raise_for_status()
+    #         data = response.json()
+    #         # KLAS may return a list or an object with a list property
+    #         if isinstance(data, list):
+    #             return data
+    #         if isinstance(data, dict) and "list" in data:
+    #             return data["list"]
+    #         if isinstance(data, dict) and "data" in data:
+    #             return data["data"] if isinstance(data["data"], list) else []
+    #         return []
+    #     except requests.exceptions.RequestException as e:
+    #         raise ConnectionError(f"Failed to fetch university schedule: {e}")
+    #     except json.JSONDecodeError as e:
+    #         raise ValueError(f"Failed to parse university schedule response: {e}")
+
+    def get_homework(self, subject_code: str, year: Optional[int] = None, semester: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Get university academic schedule (학사일정) from KLAS for a date range.
+        Get homework list for a subject from KLAS TaskStdPage.
 
         Args:
-            start_date: Start date YYYY-MM-DD (e.g. "2026-03-01").
-            end_date: End date YYYY-MM-DD (e.g. "2026-06-30").
+            subject_code: Subject code (e.g. "U202618484I030032")
+            year: Academic year. If None, uses current year.
+            semester: "1" for Spring, "2" for Fall. If None, uses current.
 
         Returns:
-            List of schedule items (raw KLAS response items).
+            List of homework items sorted by taskNo descending (most recent first).
 
         Raises:
             ConnectionError: If request fails
             ValueError: If response cannot be parsed
         """
+        if year is None or semester is None:
+            year, semester = self.get_current_year_semester()
+
+        yearhakgi = f"{year},{semester}"
+
         try:
-            # KLAS often expects YYYYMMDD for date params
-            start_ymd = start_date.replace("-", "")
-            end_ymd = end_date.replace("-", "")
             response = self.session.post(
-                settings.KLAS_SCHEDULE_URL,
+                settings.KLAS_HW_URL,
                 json={
-                    "startDate": start_ymd,
-                    "endDate": end_ymd,
+                    "selectYearhakgi": yearhakgi,
+                    "selectSubj": subject_code,
+                    "selectChangeYn": "Y",
+                    "currentPage": None,
                 },
                 headers={"Content-Type": "application/json; charset=UTF-8"},
             )
             response.raise_for_status()
             data = response.json()
-            # KLAS may return a list or an object with a list property
             if isinstance(data, list):
-                return data
-            if isinstance(data, dict) and "list" in data:
-                return data["list"]
-            if isinstance(data, dict) and "data" in data:
-                return data["data"] if isinstance(data["data"], list) else []
+                return sorted(data, key=lambda x: x.get("taskNo", 0), reverse=True)
             return []
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Failed to fetch university schedule: {e}")
+            raise ConnectionError(f"Failed to fetch homework: {e}")
         except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse university schedule response: {e}")
+            raise ValueError(f"Failed to parse homework response: {e}")
 
     def get_current_year_semester(self) -> tuple[int, str]:
         """
