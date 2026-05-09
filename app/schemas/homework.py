@@ -20,3 +20,15 @@ class HomeworkResponse(BaseModel):
     subject_code: str
     items: List[HomeworkItem] = Field(default_factory=list)
     message: Optional[str] = None
+
+
+class CourseHomework(BaseModel):
+    course_code: str
+    course_title: str
+    items: List[HomeworkItem] = Field(default_factory=list)
+
+
+class AllHomeworkResponse(BaseModel):
+    success: bool
+    courses: List[CourseHomework] = Field(default_factory=list)
+    message: Optional[str] = None
