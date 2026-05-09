@@ -22,6 +22,46 @@ class HomeworkResponse(BaseModel):
     message: Optional[str] = None
 
 
+class HomeworkDetail(BaseModel):
+    ordseq: int
+    weeklyseq: int
+    weeklysubseq: int
+    title: str
+    startdate: Optional[str] = None
+    expiredate: Optional[str] = None
+    restartdate: Optional[str] = None
+    reexpiredate: Optional[str] = None
+    contents: Optional[str] = None
+    submitfiletype: Optional[str] = None
+    atch_file_id: Optional[str] = Field(None, alias="atchFileId")
+    submit_yn: str = Field(..., alias="submityn")
+    filelimit: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
+
+
+class HomeworkDetailResponse(BaseModel):
+    success: bool
+    rpt: Optional[HomeworkDetail] = None
+    message: Optional[str] = None
+
+
+class HomeworkFile(BaseModel):
+    file_name: str = Field(..., alias="fileName")
+    ext: str
+    file_size: int = Field(..., alias="fileSize")
+    download: str
+    created_at: str = Field(..., alias="createdAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class HomeworkFilesResponse(BaseModel):
+    success: bool
+    attach_id: str
+    files: List[HomeworkFile] = Field(default_factory=list)
+
+
 class CourseHomework(BaseModel):
     course_code: str
     course_title: str

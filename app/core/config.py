@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     KLAS_TIMETABLE_URL: str
     KLAS_SCHEDULE_URL: str
     KLAS_HW_URL: str
+    KLAS_HW_VIEW_URL: str
+    KLAS_FILE_LIST_URL: str
     KLAS_PROFILE_URL: str 
     KLAS_STUDENT_INFO_URL: str
     KLAS_STUDENT_INFO_API_URL: str 

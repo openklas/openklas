@@ -473,6 +473,101 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse homework response: {e}")
 
+    def get_homework_detail(
+        self,
+        subject_code: str,
+        ordseq: int,
+        weekly_seq: int,
+        weekly_sub_seq: int,
+        year: Optional[int] = None,
+        semester: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get detail for a specific homework task (TaskStdView.do).
+
+        Returns rpt dict with contents, atchFileId, dates, submityn, etc.
+        """
+        if year is None or semester is None:
+            year, semester = self.get_current_year_semester()
+
+        try:
+            response = self.session.post(
+                settings.KLAS_HW_VIEW_URL,
+                json={
+                    "pageInit": True,
+                    "rpt": [],
+                    "smt": [],
+                    "selectYearhakgi": f"{year},{semester}",
+                    "selectSubj": subject_code,
+                    "selectChangeYn": "Y",
+                    "ordseq": str(ordseq),
+                    "weeklySeq": str(weekly_seq),
+                    "weeklySubSeq": str(weekly_sub_seq),
+                    "file": None,
+                    "title": "",
+                    "contents": "",
+                    "realfile": None,
+                    "atchFileId": None,
+                    "submitfiletype": "",
+                    "filelimit": "",
+                },
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch homework detail: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse homework detail response: {e}")
+
+    def get_homework_files(self, attach_id: str) -> List[Dict[str, Any]]:
+        """
+        Get list of files attached to a homework task (UploadFileList.do).
+
+        Args:
+            attach_id: atchFileId from homework detail response.
+
+        Returns:
+            List of file objects with fileName, ext, fileSize, download URL, etc.
+        """
+        try:
+            response = self.session.post(
+                settings.KLAS_FILE_LIST_URL,
+                json={"storageId": "CLS_PROF_TASK", "attachId": attach_id},
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, list) else []
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch homework files: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse homework files response: {e}")
+
+    def download_homework_file(self, attach_id: str, file_sn: int):
+        """
+        Stream a homework attachment from KLAS.
+
+        Returns:
+            Tuple of (content_iterator, filename, content_type)
+        """
+        url = f"{settings.KLAS_BASE_URL}/common/file/DownloadFile/{attach_id}/{file_sn}"
+        try:
+            response = self.session.get(url, stream=True)
+            response.raise_for_status()
+
+            content_disposition = response.headers.get("Content-Disposition", "")
+            filename = "attachment"
+            if "filename" in content_disposition:
+                parts = content_disposition.split("filename=")
+                if len(parts) > 1:
+                    filename = parts[1].strip().strip('"')
+
+            content_type = response.headers.get("Content-Type", "application/octet-stream")
+            return response.iter_content(chunk_size=8192), filename, content_type
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to download file: {e}")
+
     def get_current_year_semester(self) -> tuple[int, str]:
         """
         Get current year and semester based on Korean academic calendar
