@@ -1,0 +1,29 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Fittable API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.31.0",
+    "alembic>=1.13.1",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "python-multipart>=0.0.6",
+    "httpx>=0.26.0",
+    "bcrypt<4.1",
+    "requests>=2.32.5",
+    "google-auth>=2.48.0",
+    "google-api-python-client>=2.188.0",
+    "reportlab>=4.4.10",
+    "gspread>=6.2.1",
+    "sentry-sdk[fastapi]>=2.53.0",
+    "pdf2docx>=0.5.8",
+    "fastapi-swagger-dark>=0.0.9",
+    "fastapi-mcp>=0.4.0",
+]

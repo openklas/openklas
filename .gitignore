@@ -1,0 +1,93 @@
+# Claude / AI tools
+.claude/
+*.md
+AGENTS.md
+docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# uv
+.uv/
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Type checking
+.mypy_cache/
+.pytype/
+.dmypy.json
+dmypy.json
+
+# Linting / formatting
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Alembic (keep migrations, ignore env artifacts)
+alembic/versions/__pycache__/
+
+# Azure / deployment artifacts
+azure-settings.json
+.azure/
+
+# MCP config (local only)
+.mcp.json
+
+# Misc
+*.bak
+*.swp
+*.swo
+*~
+.cache/
+tmp/
+temp/
