@@ -3,6 +3,10 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Path
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
+import io
+import pdfplumber
+import anthropic as anthropic_sdk
+from app.core.config import settings
 
 from app.schemas.homework import (
     HomeworkResponse, HomeworkItem,
@@ -119,6 +123,72 @@ async def get_homework_files(
         raise HTTPException(status_code=503, detail=f"KLAS service unavailable: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching homework files: {str(e)}")
+
+
+@router.get("/files/{attach_id}/{file_sn}/ask")
+async def ask_about_homework_file(
+    attach_id: str = Path(..., description="atchFileId from homework detail"),
+    file_sn: int = Path(..., description="fileSn from file list"),
+    question: str = Query(..., description="Question to ask about the homework PDF"),
+    klas: KLASService = Depends(get_klas_service),
+):
+    """
+    Ask a question about a homework PDF using Claude AI.
+
+    Downloads the PDF from KLAS, extracts text, and answers your question.
+    Uses prompt caching so repeated questions on the same PDF are fast and cheap.
+
+    Requires: Bearer token in Authorization header
+    """
+    try:
+        pdf_bytes = klas.get_homework_file_bytes(attach_id, file_sn)
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            pages = [page.extract_text() or "" for page in pdf.pages]
+        pdf_text = "\n\n".join(p for p in pages if p.strip())
+
+        if not pdf_text:
+            raise HTTPException(status_code=422, detail="Could not extract text from PDF.")
+
+        client = anthropic_sdk.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+        with client.messages.stream(
+            model="claude-opus-4-7",
+            max_tokens=4096,
+            thinking={"type": "adaptive"},
+            system="You are a helpful academic assistant. Answer questions about homework assignments clearly and concisely based on the provided document.",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Here is the homework document:\n\n{pdf_text}",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": f"Question: {question}",
+                        },
+                    ],
+                }
+            ],
+        ) as stream:
+            message = stream.get_final_message()
+
+        answer = next(
+            (block.text for block in message.content if block.type == "text"), ""
+        )
+        return {"success": True, "question": question, "answer": answer}
+
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"KLAS service unavailable: {str(e)}")
+    except anthropic_sdk.APIError as e:
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 @router.get("/files/{attach_id}/{file_sn}/download")

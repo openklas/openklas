@@ -544,6 +544,16 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse homework files response: {e}")
 
+    def get_homework_file_bytes(self, attach_id: str, file_sn: int) -> bytes:
+        """Download a homework attachment and return raw bytes."""
+        url = f"{settings.KLAS_BASE_URL}/common/file/DownloadFile/{attach_id}/{file_sn}"
+        try:
+            response = self.session.get(url)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to download file: {e}")
+
     def download_homework_file(self, attach_id: str, file_sn: int):
         """
         Stream a homework attachment from KLAS.

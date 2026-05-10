@@ -26,4 +26,6 @@ dependencies = [
     "pdf2docx>=0.5.8",
     "fastapi-swagger-dark>=0.0.9",
     "fastapi-mcp>=0.4.0",
+    "pdfplumber>=0.11.9",
+    "anthropic>=0.100.0",
 ]

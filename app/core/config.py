@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     KLAS_STUDENT_INFO_API_URL: str 
     # KLAS_GRADUATION_URL: str
 
+    # Anthropic
+    ANTHROPIC_API_KEY: str
+
     # Session Settings
     SESSION_EXPIRE_HOURS: int = 24
     TOKEN_LENGTH: int = 32
