@@ -5,6 +5,9 @@ from typing import List, Optional
 
 class HomeworkItem(BaseModel):
     task_no: int = Field(..., alias="taskNo")
+    ordseq: Optional[int] = Field(None, alias="ordseq")
+    weeklyseq: Optional[int] = Field(None, alias="weeklyseq")
+    weeklysubseq: Optional[int] = Field(None, alias="weeklysubseq")
     title: str = Field(..., alias="title")
     start_date: Optional[str] = Field(None, alias="startdate")
     expire_date: Optional[str] = Field(None, alias="expiredate")

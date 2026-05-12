@@ -544,6 +544,35 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse homework files response: {e}")
 
+    def get_lecture_list(self, subject_code: str, year: Optional[int] = None, semester: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get lecture materials list for a subject (강의자료 board).
+
+        Returns list of posts sorted by sortOrdr, each containing boardNo, title, atchFileId, fileCnt.
+        """
+        if year is None or semester is None:
+            year, semester = self.get_current_year_semester()
+
+        try:
+            response = self.session.post(
+                settings.KLAS_LECTURE_URL,
+                json={
+                    "selectYearhakgi": f"{year},{semester}",
+                    "selectSubj": subject_code,
+                    "selectChangeYn": "Y",
+                    "currentPage": None,
+                },
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("list", []) if isinstance(data, dict) else []
+            return sorted(items, key=lambda x: x.get("sortOrdr", 0))
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch lecture list: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse lecture list response: {e}")
+
     def get_homework_file_bytes(self, attach_id: str, file_sn: int) -> bytes:
         """Download a homework attachment and return raw bytes."""
         url = f"{settings.KLAS_BASE_URL}/common/file/DownloadFile/{attach_id}/{file_sn}"

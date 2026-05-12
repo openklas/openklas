@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     KLAS_HW_URL: str
     KLAS_HW_VIEW_URL: str
     KLAS_FILE_LIST_URL: str
+    KLAS_LECTURE_URL: str
     KLAS_PROFILE_URL: str 
     KLAS_STUDENT_INFO_URL: str
     KLAS_STUDENT_INFO_API_URL: str 
