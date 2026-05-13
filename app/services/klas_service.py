@@ -573,6 +573,70 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse lecture list response: {e}")
 
+    def get_recorded_lectures(
+        self,
+        subject_code: str,
+        year: Optional[int] = None,
+        semester: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recorded lecture (online content) list for a subject.
+
+        Calls SelectOnlineCntntsStdList.do and returns the list sorted by weekNo
+        then weeklyseq.
+
+        Args:
+            subject_code: Subject code (e.g. "U202610846I030014")
+            year: Academic year. If None, uses current year.
+            semester: "1" for Spring, "2" for Fall. If None, uses current.
+
+        Returns:
+            List of recorded lecture items.
+
+        Raises:
+            ConnectionError: If request fails
+            ValueError: If response cannot be parsed
+        """
+        if year is None or semester is None:
+            year, semester = self.get_current_year_semester()
+
+        yearhakgi = f"{year},{semester}"
+
+        try:
+            response = self.session.post(
+                settings.KLAS_RECORDED_LECTURE_URL,
+                json={
+                    "list": [],
+                    "selectYearhakgi": yearhakgi,
+                    "selectSubj": subject_code,
+                    "selectChangeYn": "Y",
+                    "grcode": "",
+                    "subj": "",
+                    "year": "",
+                    "hakgi": "",
+                    "bunban": "",
+                    "lrnSn": "",
+                    "width": "",
+                    "height": "",
+                    "lrnSttus": "N",
+                    "lrnStatus": "N",
+                    "pageInit": False,
+                    "size": "",
+                    "totMbList": [],
+                    "platform": "android",
+                    "disableData": 999,
+                },
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data if isinstance(data, list) else []
+            return sorted(items, key=lambda x: (x.get("weekNo", 0), x.get("weeklyseq", 0)))
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch recorded lectures: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse recorded lectures response: {e}")
+
     def get_homework_file_bytes(self, attach_id: str, file_sn: int) -> bytes:
         """Download a homework attachment and return raw bytes."""
         url = f"{settings.KLAS_BASE_URL}/common/file/DownloadFile/{attach_id}/{file_sn}"
