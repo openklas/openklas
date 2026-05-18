@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.db.base import Base
 import app.models.user  # noqa: F401
 import app.models.lecture  # noqa: F401
+import app.models.document  # noqa: F401
 
 config = context.config
 # Strip pgbouncer param — not supported by asyncpg directly
