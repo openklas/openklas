@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Anthropic
     ANTHROPIC_API_KEY: str
 
+    # Groq (used for Whisper transcription in lecture summarizer)
+    GROQ_API_KEY: str
+
     # Session Settings
     SESSION_EXPIRE_HOURS: int = 24
     TOKEN_LENGTH: int = 32

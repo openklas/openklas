@@ -1,0 +1,304 @@
+"""Recorded lecture video summarization pipeline.
+
+Pipeline:
+  starting URL → extract code → download MP4 (via Playwright session)
+  → transcribe (faster-whisper) → summarize (Claude) → save to Obsidian
+"""
+import asyncio
+import logging
+import os
+import re
+import tempfile
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from anthropic import Anthropic
+from playwright.async_api import async_playwright
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+KWCOMMONS_BASE = "https://kwcommons.kw.ac.kr"
+OBSIDIAN_COURSES_PATH = "/Users/universe/Documents/Obsidian Vault/klas-user/semester/8/courses"
+
+
+# ── In-memory job state ───────────────────────────────────────────────────────
+
+@dataclass
+class SummarizeStatus:
+    running: bool = False
+    oid: Optional[str] = None
+    title: Optional[str] = None
+    step: str = ""          # downloading | transcribing | summarizing | saving | done | error
+    transcript: Optional[str] = None
+    summary: Optional[str] = None
+    obsidian_path: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+_status = SummarizeStatus()
+
+
+def get_summarize_status() -> SummarizeStatus:
+    return _status
+
+
+# ── URL helpers ───────────────────────────────────────────────────────────────
+
+def extract_code(starting_url: str) -> Optional[str]:
+    """Extract content code from kwcommons player URL like .../em/<code>."""
+    m = re.search(r'/em/([a-zA-Z0-9]+)', starting_url)
+    return m.group(1) if m else None
+
+
+def _mp4_candidates(code: str) -> list[str]:
+    return [
+        f"{KWCOMMONS_BASE}/contents5/KW10000001/{code}/contents/media_files/screen.mp4",
+        f"{KWCOMMONS_BASE}/contents5/KW10000001/{code}/contents/media_files/mobile/ssmovie.mp4",
+    ]
+
+
+# ── Playwright download ───────────────────────────────────────────────────────
+
+async def _browser_login(page, student_id: str, password: str) -> None:
+    await page.goto(
+        "https://klas.kw.ac.kr/usr/cmn/login/LoginForm.do",
+        wait_until="domcontentloaded",
+    )
+    await page.wait_for_timeout(2000)
+    await page.fill("#loginId", student_id)
+    await page.fill("#loginPwd", password)
+    await page.click("button.btn:has-text('로그인')")
+    await page.wait_for_timeout(5000)
+    logger.info("Browser login done. Current URL: %s", page.url)
+
+
+async def _download_mp4(starting_url: str, code: str, student_id: str, password: str) -> tuple[bytes, str]:
+    """Return (video_bytes, url_used). Tries screen.mp4 then ssmovie.mp4."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--autoplay-policy=no-user-gesture-required"],
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        )
+        page = await context.new_page()
+
+        await _browser_login(page, student_id, password)
+
+        # Navigate to the player page to establish kwcommons session cookies
+        logger.info("Navigating to player: %s", starting_url)
+        await page.goto(starting_url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(5000)
+
+        for url in _mp4_candidates(code):
+            logger.info("Trying MP4 URL: %s", url)
+            try:
+                resp = await page.request.get(url, timeout=180000)
+                if resp.ok:
+                    body = await resp.body()
+                    logger.info("Downloaded %d bytes from %s", len(body), url)
+                    await browser.close()
+                    return body, url
+                else:
+                    logger.warning("HTTP %s for %s", resp.status, url)
+            except Exception as e:
+                logger.warning("Request failed for %s: %s", url, e)
+
+        await browser.close()
+        raise ValueError(f"Could not download MP4 for code={code} (tried both URL patterns)")
+
+
+# ── Transcription ─────────────────────────────────────────────────────────────
+
+def _extract_audio(video_path: str) -> str:
+    """Extract audio from video as 16kHz mono MP3 at 32kbps via ffmpeg. Returns audio path."""
+    import subprocess
+    audio_path = video_path.replace(".mp4", "_audio.mp3")
+    subprocess.run(
+        [
+            "ffmpeg", "-i", video_path,
+            "-ar", "16000",   # 16kHz sample rate — Whisper's native rate
+            "-ac", "1",       # mono
+            "-b:a", "32k",    # 32kbps keeps files tiny (< 7MB for 30min)
+            audio_path, "-y",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return audio_path
+
+
+def _transcribe(video_path: str) -> str:
+    """Extract audio and transcribe via Groq Whisper API (whisper-large-v3-turbo)."""
+    from groq import Groq
+
+    audio_path = _extract_audio(video_path)
+    try:
+        client = Groq(api_key=settings.GROQ_API_KEY)
+        with open(audio_path, "rb") as f:
+            resp = client.audio.transcriptions.create(
+                file=(os.path.basename(audio_path), f),
+                model="whisper-large-v3-turbo",
+                language="ko",
+                response_format="text",
+            )
+        return (resp if isinstance(resp, str) else resp.text).strip()
+    finally:
+        if os.path.exists(audio_path):
+            os.unlink(audio_path)
+
+
+# ── Summarization ─────────────────────────────────────────────────────────────
+
+def _summarize(transcript: str, lecture_title: str, course_title: str) -> str:
+    """Summarize transcript with Claude."""
+    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"You are summarizing a recorded lecture for a Korean university student.\n\n"
+                    f"**Course:** {course_title}\n"
+                    f"**Lecture:** {lecture_title}\n\n"
+                    f"**Transcript:**\n{transcript}\n\n"
+                    "Please provide a structured summary in Markdown with:\n"
+                    "## Summary\n"
+                    "- 3–5 concise bullet points covering the main points\n\n"
+                    "## Key Concepts\n"
+                    "- Important terms, definitions, or ideas\n\n"
+                    "## Formulas & Definitions\n"
+                    "- Any mathematical expressions or precise definitions (if applicable)\n\n"
+                    "Write in English. Be concise but complete."
+                ),
+            }
+        ],
+    )
+    return response.content[0].text
+
+
+# ── Obsidian save ─────────────────────────────────────────────────────────────
+
+def _sanitize(name: str, max_len: int = 60) -> str:
+    """Remove filesystem-unsafe chars and trim."""
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', name).strip()[:max_len]
+
+
+def save_to_obsidian(
+    summary: str,
+    transcript: str,
+    course_title: str,
+    lecture_title: str,
+    week_no: Optional[int] = None,
+) -> str:
+    """Write a Markdown note to the Obsidian klas-user vault. Returns the file path."""
+    course_dir = Path(OBSIDIAN_COURSES_PATH) / _sanitize(course_title)
+    lectures_dir = course_dir / "lectures"
+    lectures_dir.mkdir(parents=True, exist_ok=True)
+
+    prefix = f"W{week_no:02d}-" if week_no is not None else ""
+    filename = f"{prefix}{_sanitize(lecture_title)}.md"
+    filepath = lectures_dir / filename
+
+    note = (
+        f"# {lecture_title}\n\n"
+        f"> **Course:** {course_title}  \n"
+        f"> **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+        f"{summary}\n\n"
+        "---\n\n"
+        "## Full Transcript\n\n"
+        f"{transcript}\n"
+    )
+    filepath.write_text(note, encoding="utf-8")
+    logger.info("Saved Obsidian note: %s", filepath)
+    return str(filepath)
+
+
+# ── Pipeline orchestration ────────────────────────────────────────────────────
+
+async def _run_pipeline(
+    starting_url: str,
+    oid: str,
+    lecture_title: str,
+    course_title: str,
+    week_no: Optional[int],
+    student_id: str,
+    password: str,
+) -> None:
+    global _status
+    _status.running = True
+    _status.oid = oid
+    _status.title = lecture_title
+    _status.error = None
+    _status.transcript = None
+    _status.summary = None
+    _status.obsidian_path = None
+    _status.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _status.finished_at = None
+
+    tmp_path: Optional[str] = None
+    try:
+        code = extract_code(starting_url)
+        if not code:
+            raise ValueError(f"Cannot extract code from URL: {starting_url}")
+
+        # 1. Download
+        _status.step = "downloading"
+        video_bytes, mp4_url = await _download_mp4(starting_url, code, student_id, password)
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp.write(video_bytes)
+            tmp_path = tmp.name
+        logger.info("Saved temp video: %s (%d bytes)", tmp_path, len(video_bytes))
+
+        # 2. Transcribe
+        _status.step = "transcribing"
+        transcript = _transcribe(tmp_path)
+        _status.transcript = transcript
+        logger.info("Transcript length: %d chars", len(transcript))
+
+        # 3. Summarize
+        _status.step = "summarizing"
+        summary = _summarize(transcript, lecture_title, course_title)
+        _status.summary = summary
+
+        # 4. Save to Obsidian
+        _status.step = "saving"
+        obsidian_path = save_to_obsidian(summary, transcript, course_title, lecture_title, week_no)
+        _status.obsidian_path = obsidian_path
+
+        _status.step = "done"
+
+    except Exception as e:
+        logger.error("Summarize pipeline error: %s", e, exc_info=True)
+        _status.error = str(e)
+        _status.step = "error"
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        _status.running = False
+        _status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def start_summarize_background(
+    starting_url: str,
+    oid: str,
+    lecture_title: str,
+    course_title: str,
+    week_no: Optional[int],
+    student_id: str,
+    password: str,
+) -> None:
+    """Entry point for FastAPI BackgroundTasks. Runs the async pipeline synchronously."""
+    asyncio.run(
+        _run_pipeline(starting_url, oid, lecture_title, course_title, week_no, student_id, password)
+    )
