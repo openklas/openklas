@@ -19,7 +19,7 @@ def create_session_token() -> str:
     return secrets.token_urlsafe(settings.TOKEN_LENGTH)
 
 
-def create_session(student_id: str, klas_instance: Any) -> str:
+def create_session(student_id: str, klas_instance: Any, password: str = "") -> str:
     """
     Create a new session and return the token
     
@@ -35,6 +35,7 @@ def create_session(student_id: str, klas_instance: Any) -> str:
     sessions[token] = {
         'klas': klas_instance,
         'student_id': student_id,
+        'password': password,
         'created_at': datetime.now(),
         'expires_at': datetime.now() + timedelta(hours=settings.SESSION_EXPIRE_HOURS)
     }

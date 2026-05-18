@@ -85,7 +85,7 @@ async def login(request: LoginRequest, db: DbSession):
             await db.refresh(user)
             
             # Create session token (for KLAS session / auth/me)
-            token = create_session(request.student_id, klas)
+            token = create_session(request.student_id, klas, request.password)
             # Create JWT for API routes (shifts, users, holidays)
             access_token = create_access_token(data={"sub": str(user.id)})
             
