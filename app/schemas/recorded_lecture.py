@@ -15,6 +15,8 @@ class RecordedLectureItem(BaseModel):
     module: Optional[str] = None
     lesson: Optional[str] = None
     oid: Optional[str] = None
+    grcode: Optional[str] = None   # course group code (e.g. N000003) — needed for progress API
+    bunban: Optional[str] = None   # class section (e.g. 01) — needed for progress API
 
     # Display
     sbjt: Optional[str] = None                                      # lesson title
@@ -102,5 +104,24 @@ class SummarizeStatusResponse(BaseModel):
     summary: Optional[str] = None
     obsidian_path: Optional[str] = None
     error: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class AutocompleteJobResponse(BaseModel):
+    success: bool
+    watching: int
+    lectures: List[str] = Field(default_factory=list)
+    message: str
+
+
+class AutocompleteStatusResponse(BaseModel):
+    running: bool
+    total: int = 0
+    completed: List[str] = Field(default_factory=list)
+    in_progress: Optional[str] = None
+    pending: List[str] = Field(default_factory=list)
+    failed: List[str] = Field(default_factory=list)
+    current_prog: float = 0.0
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
