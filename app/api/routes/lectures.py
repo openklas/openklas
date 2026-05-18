@@ -3,6 +3,9 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 import io
+import logging
+import re
+from pathlib import Path as FilePath
 import anthropic as anthropic_sdk
 import pdfplumber
 from sqlalchemy import select
@@ -18,6 +21,22 @@ from app.schemas.lecture import (
 )
 from app.services.klas_service import KLASService
 from app.services.lecture_service import sync_all_lectures
+
+logger = logging.getLogger(__name__)
+
+OBSIDIAN_COURSES_PATH = "/Users/universe/Documents/Obsidian Vault/klas-user/semester/8/courses"
+
+
+def _sanitize(name: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]', "-", name).strip()
+
+
+def _save_to_obsidian(subject_name: str, filename: str, content: str) -> str:
+    course_dir = FilePath(OBSIDIAN_COURSES_PATH) / _sanitize(subject_name) / "materials"
+    course_dir.mkdir(parents=True, exist_ok=True)
+    note_path = course_dir / f"{_sanitize(filename)}.md"
+    note_path.write_text(content, encoding="utf-8")
+    return str(note_path)
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -178,6 +197,12 @@ async def ask_about_lecture(
             message = stream.get_final_message()
 
         answer = next((b.text for b in message.content if b.type == "text"), "")
+
+        subject_name = materials[0].subject_name
+        note_content = f"# {post_title}\n\n**Subject:** {subject_name}\n\n## Q: {question}\n\n{answer}\n"
+        obsidian_path = _save_to_obsidian(subject_name, post_title, note_content)
+        logger.info("Saved lecture Q&A to %s", obsidian_path)
+
         return LectureAskResponse(
             success=True,
             board_no=board_no,
@@ -256,12 +281,18 @@ async def summarize_subject_lectures(
             message = stream.get_final_message()
 
         summary = next((b.text for b in message.content if b.type == "text"), "")
+
+        note_content = f"# {subject_name} - Study Summary\n\n{summary}\n"
+        obsidian_path = _save_to_obsidian(subject_name, "Full Summary", note_content)
+        logger.info("Saved lecture summary to %s", obsidian_path)
+
         return {
             "success": True,
             "subject_code": subject_code,
             "subject_name": subject_name,
             "lecture_count": len(materials),
             "summary": summary,
+            "obsidian_path": obsidian_path,
         }
     except anthropic_sdk.APIError as e:
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
