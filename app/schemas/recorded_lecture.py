@@ -66,3 +66,41 @@ class AllRecordedLecturesResponse(BaseModel):
     success: bool
     courses: List[CourseRecordedLectures] = Field(default_factory=list)
     message: Optional[str] = None
+
+
+class WatchJobResponse(BaseModel):
+    success: bool
+    watching: int
+    lectures: List[str] = Field(default_factory=list)
+    message: str
+
+
+class WatchStatusResponse(BaseModel):
+    running: bool
+    total: int
+    completed: List[str] = Field(default_factory=list)
+    in_progress: Optional[str] = None
+    pending: List[str] = Field(default_factory=list)
+    failed: List[str] = Field(default_factory=list)
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class SummarizeJobResponse(BaseModel):
+    success: bool
+    oid: str
+    title: str
+    message: str
+
+
+class SummarizeStatusResponse(BaseModel):
+    running: bool
+    oid: Optional[str] = None
+    title: Optional[str] = None
+    step: str = ""
+    transcript: Optional[str] = None
+    summary: Optional[str] = None
+    obsidian_path: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
