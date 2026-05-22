@@ -189,8 +189,11 @@ def _summarize(transcript: str, lecture_title: str, course_title: str) -> str:
 # ── Obsidian save ─────────────────────────────────────────────────────────────
 
 def _sanitize(name: str, max_len: int = 60) -> str:
-    """Remove filesystem-unsafe chars and trim."""
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', name).strip()[:max_len]
+    """Remove filesystem-unsafe chars, strip leading dots (no `..` traversal), trim."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', name).strip().lstrip('.')
+    if not cleaned:
+        raise ValueError(f"Name reduces to empty after sanitization: {name!r}")
+    return cleaned[:max_len]
 
 
 def save_to_obsidian(
@@ -201,13 +204,24 @@ def save_to_obsidian(
     week_no: Optional[int] = None,
 ) -> str:
     """Write a Markdown note to the Obsidian klas-user vault. Returns the file path."""
-    course_dir = Path(OBSIDIAN_COURSES_PATH) / _sanitize(course_title)
-    lectures_dir = course_dir / "lectures"
+    vault_root = Path(OBSIDIAN_COURSES_PATH).resolve()
+    course_dir = (vault_root / _sanitize(course_title)).resolve()
+    lectures_dir = (course_dir / "lectures").resolve()
+
+    if not lectures_dir.is_relative_to(vault_root):
+        raise ValueError(
+            f"Refusing to write outside vault root: {lectures_dir} not under {vault_root}"
+        )
     lectures_dir.mkdir(parents=True, exist_ok=True)
 
     prefix = f"W{week_no:02d}-" if week_no is not None else ""
     filename = f"{prefix}{_sanitize(lecture_title)}.md"
-    filepath = lectures_dir / filename
+    filepath = (lectures_dir / filename).resolve()
+
+    if not filepath.is_relative_to(vault_root):
+        raise ValueError(
+            f"Refusing to write outside vault root: {filepath} not under {vault_root}"
+        )
 
     note = (
         f"# {lecture_title}\n\n"
