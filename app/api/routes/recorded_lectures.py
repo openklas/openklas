@@ -33,6 +33,8 @@ from app.core.security import get_session as _get_session
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
 
+MAX_AUDIO_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB — generous for ~1h lecture audio
+
 
 def get_klas_service(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
@@ -489,7 +491,30 @@ async def record_lecture(
     if not audio.filename:
         raise HTTPException(status_code=422, detail="Audio file has no filename.")
 
-    audio_bytes = await audio.read()
+    # Early reject based on reported Content-Length (cheap; never reads the body).
+    if audio.size is not None and audio.size > MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large ({audio.size} bytes). Max {MAX_AUDIO_UPLOAD_BYTES} bytes.",
+        )
+
+    # Bounded read: abort if the body exceeds the cap mid-stream. Defends against
+    # missing/lying Content-Length and chunked transfers.
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await audio.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_AUDIO_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Audio body exceeded {MAX_AUDIO_UPLOAD_BYTES} bytes during read.",
+            )
+        chunks.append(chunk)
+    audio_bytes = b"".join(chunks)
+
     if not audio_bytes:
         raise HTTPException(status_code=422, detail="Uploaded audio file is empty.")
 
