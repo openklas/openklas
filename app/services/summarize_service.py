@@ -302,3 +302,78 @@ def start_summarize_background(
     asyncio.run(
         _run_pipeline(starting_url, oid, lecture_title, course_title, week_no, student_id, password)
     )
+
+
+# ── Record pipeline (client-uploaded audio) ───────────────────────────────────
+
+_record_status = SummarizeStatus()
+
+
+def get_record_status() -> SummarizeStatus:
+    return _record_status
+
+
+def _transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
+    """Send raw audio bytes to Groq Whisper. Supports webm, ogg, mp3, wav, m4a."""
+    from groq import Groq
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    resp = client.audio.transcriptions.create(
+        file=(filename, audio_bytes),
+        model="whisper-large-v3-turbo",
+        language="ko",
+        response_format="text",
+    )
+    return (resp if isinstance(resp, str) else resp.text).strip()
+
+
+def _run_record_pipeline(
+    audio_bytes: bytes,
+    filename: str,
+    lecture_title: str,
+    course_title: str,
+    week_no: Optional[int],
+) -> None:
+    global _record_status
+    _record_status.running = True
+    _record_status.oid = None
+    _record_status.title = lecture_title
+    _record_status.error = None
+    _record_status.transcript = None
+    _record_status.summary = None
+    _record_status.obsidian_path = None
+    _record_status.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _record_status.finished_at = None
+
+    try:
+        _record_status.step = "transcribing"
+        transcript = _transcribe_audio_bytes(audio_bytes, filename)
+        _record_status.transcript = transcript
+        logger.info("Record transcript length: %d chars", len(transcript))
+
+        _record_status.step = "summarizing"
+        summary = _summarize(transcript, lecture_title, course_title)
+        _record_status.summary = summary
+
+        _record_status.step = "saving"
+        obsidian_path = save_to_obsidian(summary, transcript, course_title, lecture_title, week_no)
+        _record_status.obsidian_path = obsidian_path
+
+        _record_status.step = "done"
+    except Exception as e:
+        logger.error("Record pipeline error: %s", e, exc_info=True)
+        _record_status.error = str(e)
+        _record_status.step = "error"
+    finally:
+        _record_status.running = False
+        _record_status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def start_record_background(
+    audio_bytes: bytes,
+    filename: str,
+    lecture_title: str,
+    course_title: str,
+    week_no: Optional[int],
+) -> None:
+    """Entry point for FastAPI BackgroundTasks. Runs the record pipeline synchronously."""
+    _run_record_pipeline(audio_bytes, filename, lecture_title, course_title, week_no)
