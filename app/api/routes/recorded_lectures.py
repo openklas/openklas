@@ -469,6 +469,7 @@ async def record_lecture(
     course_title: str = Query(..., description="Course/subject name (shown in the summary and Obsidian note)"),
     week_no: Optional[int] = Query(None, description="Week number (optional, used in Obsidian filename)"),
     force: bool = Query(False, description="Override a stuck/stale record job"),
+    session: dict = Depends(get_session_data),
 ):
     """
     Transcribe client-recorded audio and generate a lecture summary.
@@ -477,9 +478,11 @@ async def record_lecture(
     The pipeline: transcribe (Groq Whisper, Korean) → summarize (Claude) → save to Obsidian.
 
     Returns immediately. Poll `GET /record/status` for progress.
-    No authentication required.
+
+    Requires: Bearer token in Authorization header (KLAS session).
     """
-    status = get_record_status()
+    student_id = session["student_id"]
+    status = get_record_status(student_id)
     if status.running and not force:
         raise HTTPException(
             status_code=409,
@@ -495,7 +498,7 @@ async def record_lecture(
 
     background_tasks.add_task(
         start_record_background,
-        audio_bytes, audio.filename, lecture_title, course_title, week_no,
+        audio_bytes, audio.filename, lecture_title, course_title, week_no, student_id,
     )
     return RecordJobResponse(
         success=True,
@@ -505,13 +508,15 @@ async def record_lecture(
 
 
 @router.get("/record/status", response_model=RecordStatusResponse)
-async def record_status():
+async def record_status(session: dict = Depends(get_session_data)):
     """
-    Poll the status of the in-progress recording pipeline.
+    Poll the recording pipeline status for the authenticated user.
 
     `step` values: transcribing | summarizing | saving | done | error
+
+    Requires: Bearer token in Authorization header (KLAS session).
     """
-    s = get_record_status()
+    s = get_record_status(session["student_id"])
     return RecordStatusResponse(
         running=s.running,
         title=s.title,
