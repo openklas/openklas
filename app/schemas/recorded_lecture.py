@@ -108,6 +108,24 @@ class SummarizeStatusResponse(BaseModel):
     finished_at: Optional[str] = None
 
 
+class RecordJobResponse(BaseModel):
+    success: bool
+    title: str
+    message: str
+
+
+class RecordStatusResponse(BaseModel):
+    running: bool
+    title: Optional[str] = None
+    step: str = ""
+    transcript: Optional[str] = None
+    summary: Optional[str] = None
+    obsidian_path: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
 class AutocompleteJobResponse(BaseModel):
     success: bool
     watching: int
