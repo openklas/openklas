@@ -41,11 +41,20 @@ class SummarizeStatus:
     finished_at: Optional[str] = None
 
 
-_status = SummarizeStatus()
+_statuses: dict[str, SummarizeStatus] = {}
 
 
-def get_summarize_status() -> SummarizeStatus:
-    return _status
+def get_summarize_status(student_id: str) -> SummarizeStatus:
+    """Return the per-user summarize status, or a fresh empty one if no job has run."""
+    return _statuses.get(student_id) or SummarizeStatus()
+
+
+def _ensure_status(student_id: str) -> SummarizeStatus:
+    s = _statuses.get(student_id)
+    if s is None:
+        s = SummarizeStatus()
+        _statuses[student_id] = s
+    return s
 
 
 # ── URL helpers ───────────────────────────────────────────────────────────────
@@ -234,16 +243,16 @@ async def _run_pipeline(
     student_id: str,
     password: str,
 ) -> None:
-    global _status
-    _status.running = True
-    _status.oid = oid
-    _status.title = lecture_title
-    _status.error = None
-    _status.transcript = None
-    _status.summary = None
-    _status.obsidian_path = None
-    _status.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    _status.finished_at = None
+    s = _ensure_status(student_id)
+    s.running = True
+    s.oid = oid
+    s.title = lecture_title
+    s.error = None
+    s.transcript = None
+    s.summary = None
+    s.obsidian_path = None
+    s.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    s.finished_at = None
 
     tmp_path: Optional[str] = None
     try:
@@ -252,7 +261,7 @@ async def _run_pipeline(
             raise ValueError(f"Cannot extract code from URL: {starting_url}")
 
         # 1. Download
-        _status.step = "downloading"
+        s.step = "downloading"
         video_bytes, mp4_url = await _download_mp4(starting_url, code, student_id, password)
 
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
@@ -261,32 +270,32 @@ async def _run_pipeline(
         logger.info("Saved temp video: %s (%d bytes)", tmp_path, len(video_bytes))
 
         # 2. Transcribe
-        _status.step = "transcribing"
+        s.step = "transcribing"
         transcript = _transcribe(tmp_path)
-        _status.transcript = transcript
+        s.transcript = transcript
         logger.info("Transcript length: %d chars", len(transcript))
 
         # 3. Summarize
-        _status.step = "summarizing"
+        s.step = "summarizing"
         summary = _summarize(transcript, lecture_title, course_title)
-        _status.summary = summary
+        s.summary = summary
 
         # 4. Save to Obsidian
-        _status.step = "saving"
+        s.step = "saving"
         obsidian_path = save_to_obsidian(summary, transcript, course_title, lecture_title, week_no)
-        _status.obsidian_path = obsidian_path
+        s.obsidian_path = obsidian_path
 
-        _status.step = "done"
+        s.step = "done"
 
     except Exception as e:
         logger.error("Summarize pipeline error: %s", e, exc_info=True)
-        _status.error = str(e)
-        _status.step = "error"
+        s.error = str(e)
+        s.step = "error"
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
-        _status.running = False
-        _status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        s.running = False
+        s.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def start_summarize_background(
