@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     SESSION_EXPIRE_HOURS: int = 24
     TOKEN_LENGTH: int = 32
 
+    # Redis-backed session store (optional — falls back to in-memory dict when unset).
+    # Use `redis://host:port/db` (default port 6379, default db 0).
+    REDIS_URL: str | None = None
+    # Fernet key (base64 url-safe, 32 raw bytes). Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Required when REDIS_URL is set — used to encrypt KLAS passwords at rest.
+    SESSION_ENCRYPTION_KEY: str | None = None
+
     # Old Login Security Settings (not used)
     JWT_SECRET: str
     JWT_EXPIRES_MINUTES: int = 120
