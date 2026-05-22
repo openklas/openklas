@@ -83,6 +83,9 @@ azure-settings.json
 # MCP config (local only)
 .mcp.json
 
+# Evals (personal KLAS data — keep local only)
+evals/
+
 # Misc
 *.bak
 *.swp
