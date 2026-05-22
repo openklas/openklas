@@ -329,11 +329,20 @@ def start_summarize_background(
 
 # ── Record pipeline (client-uploaded audio) ───────────────────────────────────
 
-_record_status = SummarizeStatus()
+_record_statuses: dict[str, SummarizeStatus] = {}
 
 
-def get_record_status() -> SummarizeStatus:
-    return _record_status
+def get_record_status(student_id: str) -> SummarizeStatus:
+    """Return the per-user record status, or a fresh empty one if no job has run."""
+    return _record_statuses.get(student_id) or SummarizeStatus()
+
+
+def _ensure_record_status(student_id: str) -> SummarizeStatus:
+    s = _record_statuses.get(student_id)
+    if s is None:
+        s = SummarizeStatus()
+        _record_statuses[student_id] = s
+    return s
 
 
 def _transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
@@ -355,40 +364,41 @@ def _run_record_pipeline(
     lecture_title: str,
     course_title: str,
     week_no: Optional[int],
+    student_id: str,
 ) -> None:
-    global _record_status
-    _record_status.running = True
-    _record_status.oid = None
-    _record_status.title = lecture_title
-    _record_status.error = None
-    _record_status.transcript = None
-    _record_status.summary = None
-    _record_status.obsidian_path = None
-    _record_status.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    _record_status.finished_at = None
+    s = _ensure_record_status(student_id)
+    s.running = True
+    s.oid = None
+    s.title = lecture_title
+    s.error = None
+    s.transcript = None
+    s.summary = None
+    s.obsidian_path = None
+    s.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    s.finished_at = None
 
     try:
-        _record_status.step = "transcribing"
+        s.step = "transcribing"
         transcript = _transcribe_audio_bytes(audio_bytes, filename)
-        _record_status.transcript = transcript
+        s.transcript = transcript
         logger.info("Record transcript length: %d chars", len(transcript))
 
-        _record_status.step = "summarizing"
+        s.step = "summarizing"
         summary = _summarize(transcript, lecture_title, course_title)
-        _record_status.summary = summary
+        s.summary = summary
 
-        _record_status.step = "saving"
+        s.step = "saving"
         obsidian_path = save_to_obsidian(summary, transcript, course_title, lecture_title, week_no)
-        _record_status.obsidian_path = obsidian_path
+        s.obsidian_path = obsidian_path
 
-        _record_status.step = "done"
+        s.step = "done"
     except Exception as e:
         logger.error("Record pipeline error: %s", e, exc_info=True)
-        _record_status.error = str(e)
-        _record_status.step = "error"
+        s.error = str(e)
+        s.step = "error"
     finally:
-        _record_status.running = False
-        _record_status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        s.running = False
+        s.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def start_record_background(
@@ -397,6 +407,7 @@ def start_record_background(
     lecture_title: str,
     course_title: str,
     week_no: Optional[int],
+    student_id: str,
 ) -> None:
     """Entry point for FastAPI BackgroundTasks. Runs the record pipeline synchronously."""
-    _run_record_pipeline(audio_bytes, filename, lecture_title, course_title, week_no)
+    _run_record_pipeline(audio_bytes, filename, lecture_title, course_title, week_no, student_id)
