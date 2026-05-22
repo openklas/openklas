@@ -87,7 +87,7 @@ async def watch_lecture(
         if year is None or semester is None:
             year, semester = klas.get_current_year_semester()
 
-        if get_status().running and not force:
+        if get_status(student_id).running and not force:
             raise HTTPException(status_code=409, detail="A lecture is already being watched. Check /watch/status or pass force=true to override.")
 
         items = klas.get_recorded_lectures(subject_code, year, semester)
@@ -118,13 +118,13 @@ async def watch_lecture(
 
 
 @router.get("/watch/status", response_model=WatchStatusResponse)
-async def watch_status(klas: KLASService = Depends(get_klas_service)):
+async def watch_status(session: dict = Depends(get_session_data)):
     """
-    Get the current status of the background watch job.
+    Get the current status of the background watch job for the authenticated user.
 
     Requires: Bearer token in Authorization header
     """
-    s = get_status()
+    s = get_status(session["student_id"])
     return WatchStatusResponse(
         running=s.running,
         total=s.total,
@@ -234,7 +234,7 @@ async def summarize_recorded_lecture(
     student_id = session["student_id"]
     password = session.get("password", "")
 
-    status = get_summarize_status()
+    status = get_summarize_status(student_id)
     if status.running and not force:
         raise HTTPException(
             status_code=409,
@@ -282,15 +282,15 @@ async def summarize_recorded_lecture(
 
 
 @router.get("/summarize/status", response_model=SummarizeStatusResponse)
-async def summarize_status(klas: KLASService = Depends(get_klas_service)):
+async def summarize_status(session: dict = Depends(get_session_data)):
     """
-    Get the current status of the background summarize pipeline.
+    Get the current status of the background summarize pipeline for the authenticated user.
 
     `step` values: downloading | transcribing | summarizing | saving | done | error
 
     Requires: Bearer token in Authorization header
     """
-    s = get_summarize_status()
+    s = get_summarize_status(session["student_id"])
     return SummarizeStatusResponse(
         running=s.running,
         oid=s.oid,
@@ -332,7 +332,7 @@ async def autocomplete_lecture(
     klas = session["klas"]
     student_id = session["student_id"]
 
-    status = get_autocomplete_status()
+    status = get_autocomplete_status(student_id)
     if status.running and not force:
         raise HTTPException(
             status_code=409,
@@ -387,7 +387,7 @@ async def autocomplete_all_lectures(
     klas = session["klas"]
     student_id = session["student_id"]
 
-    status = get_autocomplete_status()
+    status = get_autocomplete_status(student_id)
     if status.running and not force:
         raise HTTPException(
             status_code=409,
@@ -439,15 +439,15 @@ async def autocomplete_all_lectures(
 
 
 @router.get("/autocomplete/status", response_model=AutocompleteStatusResponse)
-async def autocomplete_status(klas: KLASService = Depends(get_klas_service)):
+async def autocomplete_status(session: dict = Depends(get_session_data)):
     """
-    Poll the current autocomplete job status.
+    Poll the autocomplete job status for the authenticated user.
 
     `current_prog` is the live progress % of the lecture being processed.
 
     Requires: Bearer token in Authorization header
     """
-    s = get_autocomplete_status()
+    s = get_autocomplete_status(session["student_id"])
     return AutocompleteStatusResponse(
         running=s.running,
         total=s.total,
