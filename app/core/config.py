@@ -11,19 +11,31 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     DESCRIPTION: str = "API for Fittable"
 
-    # CORS Settings
+    # Environment — controls CORS, debug behavior, etc. Set ENV=prod in production .env.
+    ENV: str = "dev"
+
+    # CORS — production origins only. Dev localhost origins are appended automatically
+    # when ENV != "prod" (see `cors_origins` property below).
     BACKEND_CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-        "http://localhost:3001",
-        "http://localhost:8001",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:8001",
         "https://fittable-frontend.vercel.app",
-        "https://fittable.vercel.app"
+        "https://fittable.vercel.app",
     ]
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Effective CORS allowlist. Adds localhost dev origins when ENV != 'prod'."""
+        if self.ENV.lower() == "prod":
+            return self.BACKEND_CORS_ORIGINS
+        return self.BACKEND_CORS_ORIGINS + [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:8000",
+            "http://localhost:8001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "http://127.0.0.1:8000",
+            "http://127.0.0.1:8001",
+        ]
 
     # Database Settings
     DATABASE_URL: str

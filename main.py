@@ -4,8 +4,11 @@ KLAS API - Main application entry point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import FastApiMCP
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag
 
 # Create FastAPI app
@@ -15,10 +18,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Configure CORS
+# Rate limiter (slowapi) — wires the limiter instance to the app and registers
+# the 429 handler so `@limiter.limit(...)` decorators work on routes.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configure CORS — origins depend on ENV (see config.cors_origins).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
