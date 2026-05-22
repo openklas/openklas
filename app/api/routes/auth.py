@@ -1,12 +1,13 @@
 """
 Authentication endpoints
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Response
+from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.services.auth_service import authenticate_user, create_user_token
 from app.services.klas_service import KLASService
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.security import create_session, delete_session, create_access_token
 
 from app.api.deps import DbSession, CurrentUser, CurrentUserFromKlas
@@ -20,7 +21,8 @@ security = HTTPBearer()
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, db: DbSession):
+@limiter.limit("5/minute")
+async def login(request: Request, body: LoginRequest, db: DbSession):
     """
     Login to KLAS and get a session token
     
@@ -33,7 +35,7 @@ async def login(request: LoginRequest, db: DbSession):
     try:
         # Initialize KLAS service and login
         klas = KLASService()
-        success = klas.login(request.student_id, request.password)
+        success = klas.login(body.student_id, body.password)
         
         if success:
             # Fetch profile data from KLAS
@@ -42,7 +44,7 @@ async def login(request: LoginRequest, db: DbSession):
             except Exception as e:
                 # If profile fetch fails, still allow login but with minimal data
                 profile_data = {
-                    'student_id': request.student_id,
+                    'student_id': body.student_id,
                     'name': None,
                     'major': None,
                     'date_of_birth': None,
@@ -53,7 +55,7 @@ async def login(request: LoginRequest, db: DbSession):
             
             # Check if user exists in database
             result = await db.execute(
-                select(User).where(User.student_id == request.student_id)
+                select(User).where(User.student_id == body.student_id)
             )
             user = result.scalar_one_or_none()
             
@@ -69,7 +71,7 @@ async def login(request: LoginRequest, db: DbSession):
             else:
                 # Create new user
                 user = User(
-                    student_id=profile_data.get('student_id') or request.student_id,
+                    student_id=profile_data.get('student_id') or body.student_id,
                     name=profile_data.get('name'),
                     major=profile_data.get('major'),
                     date_of_birth=profile_data.get('date_of_birth'),
@@ -85,7 +87,7 @@ async def login(request: LoginRequest, db: DbSession):
             await db.refresh(user)
             
             # Create session token (for KLAS session / auth/me)
-            token = create_session(request.student_id, klas, request.password)
+            token = create_session(body.student_id, klas, body.password)
             # Create JWT for API routes (shifts, users, holidays)
             access_token = create_access_token(data={"sub": str(user.id)})
             
