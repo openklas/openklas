@@ -28,13 +28,21 @@ OBSIDIAN_COURSES_PATH = "/Users/universe/Documents/Obsidian Vault/klas-user/seme
 
 
 def _sanitize(name: str) -> str:
-    return re.sub(r'[\\/:*?"<>|]', "-", name).strip()
+    cleaned = re.sub(r'[\\/:*?"<>|]', "-", name).strip().lstrip(".")
+    if not cleaned:
+        raise ValueError(f"Name reduces to empty after sanitization: {name!r}")
+    return cleaned
 
 
 def _save_to_obsidian(subject_name: str, filename: str, content: str) -> str:
-    course_dir = FilePath(OBSIDIAN_COURSES_PATH) / _sanitize(subject_name) / "materials"
+    vault_root = FilePath(OBSIDIAN_COURSES_PATH).resolve()
+    course_dir = (vault_root / _sanitize(subject_name) / "materials").resolve()
+    if not course_dir.is_relative_to(vault_root):
+        raise ValueError(f"Refusing to write outside vault root: {course_dir}")
     course_dir.mkdir(parents=True, exist_ok=True)
-    note_path = course_dir / f"{_sanitize(filename)}.md"
+    note_path = (course_dir / f"{_sanitize(filename)}.md").resolve()
+    if not note_path.is_relative_to(vault_root):
+        raise ValueError(f"Refusing to write outside vault root: {note_path}")
     note_path.write_text(content, encoding="utf-8")
     return str(note_path)
 
