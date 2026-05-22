@@ -55,11 +55,20 @@ class AutocompleteStatus:
     finished_at: Optional[str] = None
 
 
-_status = AutocompleteStatus()
+_statuses: dict[str, AutocompleteStatus] = {}
 
 
-def get_autocomplete_status() -> AutocompleteStatus:
-    return _status
+def get_autocomplete_status(student_id: str) -> AutocompleteStatus:
+    """Return the per-user autocomplete status, or a fresh empty one if no job has run."""
+    return _statuses.get(student_id) or AutocompleteStatus()
+
+
+def _ensure_status(student_id: str) -> AutocompleteStatus:
+    s = _statuses.get(student_id)
+    if s is None:
+        s = AutocompleteStatus()
+        _statuses[student_id] = s
+    return s
 
 
 # ── KLAS API helpers ──────────────────────────────────────────────────────────
@@ -284,7 +293,7 @@ def _autocomplete_single(
         prog = float(result.get("prog") or prog)
         status_str = result.get("lessonstatus", "")
 
-        _status.current_prog = prog
+        _ensure_status(student_id).current_prog = prog
         logger.info("[autocomplete] %s — ptime=%ds prog=%.1f%% status=%s",
                     title, ptime, prog, status_str)
 
@@ -314,34 +323,34 @@ def _run(
     student_id: str,
     delay: float,
 ) -> None:
-    global _status
-    _status.running = True
-    _status.total = len(raw_lectures)
-    _status.completed = []
-    _status.failed = []
-    _status.pending = [r.get("sbjt", r.get("oid", "?")) for r in raw_lectures]
-    _status.current_prog = 0.0
-    _status.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    _status.finished_at = None
+    s = _ensure_status(student_id)
+    s.running = True
+    s.total = len(raw_lectures)
+    s.completed = []
+    s.failed = []
+    s.pending = [r.get("sbjt", r.get("oid", "?")) for r in raw_lectures]
+    s.current_prog = 0.0
+    s.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    s.finished_at = None
 
     for raw in raw_lectures:
         title = raw.get("sbjt", raw.get("oid", "?"))
-        _status.in_progress = title
-        if title in _status.pending:
-            _status.pending.remove(title)
+        s.in_progress = title
+        if title in s.pending:
+            s.pending.remove(title)
         try:
             final_prog = _autocomplete_single(klas, raw, year, semester, student_id, delay)
             logger.info("[autocomplete] done: %s → %.1f%%", title, final_prog)
-            _status.completed.append(title)
+            s.completed.append(title)
         except Exception as e:
             logger.error("[autocomplete] FAILED %s: %s", title, e)
-            _status.failed.append(title)
+            s.failed.append(title)
 
-    _status.running = False
-    _status.in_progress = None
-    _status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    s.running = False
+    s.in_progress = None
+    s.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info("[autocomplete] session complete: %d done, %d failed",
-                len(_status.completed), len(_status.failed))
+                len(s.completed), len(s.failed))
 
 
 def start_autocomplete_background(

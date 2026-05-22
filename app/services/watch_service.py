@@ -26,29 +26,41 @@ class WatchStatus:
     finished_at: Optional[str] = None
 
 
-_status = WatchStatus()
+_statuses: dict[str, WatchStatus] = {}
 
 
-def get_status() -> WatchStatus:
-    return _status
+def get_status(student_id: str) -> WatchStatus:
+    """Return the per-user watch status, or a fresh empty one if no job has run."""
+    return _statuses.get(student_id) or WatchStatus()
 
 
-def reset_status() -> None:
-    _status.running = False
-    _status.in_progress = None
-    _status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def _ensure_status(student_id: str) -> WatchStatus:
+    s = _statuses.get(student_id)
+    if s is None:
+        s = WatchStatus()
+        _statuses[student_id] = s
+    return s
 
 
-def _reset(lectures: list[dict]) -> None:
-    global _status
-    _status.running = True
-    _status.total = len(lectures)
-    _status.completed = []
-    _status.in_progress = None
-    _status.pending = [lec["title"] for lec in lectures]
-    _status.failed = []
-    _status.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    _status.finished_at = None
+def reset_status(student_id: str) -> None:
+    s = _statuses.get(student_id)
+    if s is None:
+        return
+    s.running = False
+    s.in_progress = None
+    s.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _reset(lectures: list[dict], student_id: str) -> None:
+    s = _ensure_status(student_id)
+    s.running = True
+    s.total = len(lectures)
+    s.completed = []
+    s.in_progress = None
+    s.pending = [lec["title"] for lec in lectures]
+    s.failed = []
+    s.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    s.finished_at = None
 
 
 # ── Cookie extraction ─────────────────────────────────────────────────────────
@@ -67,14 +79,15 @@ def _get_klas_cookies(klas: KLASService) -> list[dict]:
 
 # ── Playback ──────────────────────────────────────────────────────────────────
 
-async def _watch_single(page: Page, lecture: dict) -> None:
+async def _watch_single(page: Page, lecture: dict, student_id: str) -> None:
     title = lecture["title"]
     url = lecture["url"]
     total_min = lecture["total_min"]
 
-    _status.in_progress = title
-    if title in _status.pending:
-        _status.pending.remove(title)
+    s = _ensure_status(student_id)
+    s.in_progress = title
+    if title in s.pending:
+        s.pending.remove(title)
 
     logger.info("Watching: %s (%d min)", title, total_min)
 
@@ -154,19 +167,20 @@ async def _run(klas: KLASService, lectures: list[dict], student_id: str, passwor
         # Real browser login so kwcommons.kw.ac.kr session is established
         await _browser_login(page, student_id, password)
 
+        s = _ensure_status(student_id)
         for lecture in lectures:
             try:
-                await _watch_single(page, lecture)
-                _status.completed.append(lecture["title"])
+                await _watch_single(page, lecture, student_id)
+                s.completed.append(lecture["title"])
             except Exception as e:
                 logger.error("Failed to watch %s: %s", lecture["title"], e)
-                _status.failed.append(lecture["title"])
+                s.failed.append(lecture["title"])
 
         await browser.close()
 
-    _status.running = False
-    _status.in_progress = None
-    _status.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    s.running = False
+    s.in_progress = None
+    s.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info("Watch session complete.")
 
 
@@ -196,6 +210,6 @@ def get_unwatched(klas: KLASService, year: int, semester: str) -> list[dict]:
 
 
 def start_watch_background(klas: KLASService, lectures: list[dict], student_id: str, password: str) -> None:
-    """Called by FastAPI BackgroundTasks — initializes status and runs the watcher."""
-    _reset(lectures)
+    """Called by FastAPI BackgroundTasks — initializes per-user status and runs the watcher."""
+    _reset(lectures, student_id)
     asyncio.run(_run(klas, lectures, student_id, password))
