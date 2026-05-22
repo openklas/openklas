@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### feat: client audio recording → transcribe → summarize pipeline
+
+Added two new endpoints that accept a browser-recorded audio file, transcribe it with Groq Whisper (Korean), summarize with Claude, and save to Obsidian — reusing the existing summarize/save pipeline from `summarize_service.py`.
+
+**New endpoints (under `/api/recorded-lectures`):**
+- `POST /record` — upload audio (`UploadFile`, any format Groq supports: webm, ogg, mp3, wav, m4a), pass `subject_code` + `lecture_title` (and optionally `week_no`). Looks up course title from KLAS timetable, runs pipeline in background. Supports `force=true` to override a stuck job.
+- `GET /record/status` — poll pipeline progress. `step` values: `transcribing | summarizing | saving | done | error`. Returns transcript, summary, and Obsidian path on completion.
+
+**Modified files:**
+- `app/services/summarize_service.py` — added `_transcribe_audio_bytes`, `_run_record_pipeline`, `start_record_background`, `get_record_status`, `_record_status`; all reuse the existing `_summarize` and `save_to_obsidian` functions unchanged
+- `app/schemas/recorded_lecture.py` — added `RecordJobResponse`, `RecordStatusResponse`
+- `app/api/routes/recorded_lectures.py` — added `POST /record` and `GET /record/status` endpoints; added `File`, `UploadFile` imports
+
+**Client usage:** record in the browser with `MediaRecorder` (produces WebM/Opus, natively supported by Groq), POST the blob to `/api/recorded-lectures/record`, poll `/record/status` until `step == "done"`.
+
+---
+
 ### feat: per-user RAG service for lecture PDF materials
 
 Added a full local RAG (Retrieval-Augmented Generation) pipeline scoped per user. PDFs are chunked semantically, embedded with a local sentence-transformer model, stored in pgvector, reranked with a cross-encoder, and answered by a local Ollama LLM — no external API calls required.

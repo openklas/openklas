@@ -1,6 +1,6 @@
 """Recorded lecture endpoints"""
 import logging
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Depends, Query, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
@@ -17,11 +17,16 @@ from app.schemas.recorded_lecture import (
     WatchStatusResponse,
     SummarizeJobResponse,
     SummarizeStatusResponse,
+    RecordJobResponse,
+    RecordStatusResponse,
     AutocompleteJobResponse,
     AutocompleteStatusResponse,
 )
 from app.services.watch_service import get_unwatched, start_watch_background, get_status, reset_status
-from app.services.summarize_service import get_summarize_status, start_summarize_background
+from app.services.summarize_service import (
+    get_summarize_status, start_summarize_background,
+    get_record_status, start_record_background,
+)
 from app.services.progress_service import get_autocomplete_status, start_autocomplete_background
 from app.core.security import get_session as _get_session
 
@@ -451,6 +456,70 @@ async def autocomplete_status(klas: KLASService = Depends(get_klas_service)):
         pending=s.pending,
         failed=s.failed,
         current_prog=s.current_prog,
+        started_at=s.started_at,
+        finished_at=s.finished_at,
+    )
+
+
+@router.post("/record", response_model=RecordJobResponse)
+async def record_lecture(
+    background_tasks: BackgroundTasks,
+    audio: UploadFile = File(..., description="Audio file recorded by the client (webm, ogg, mp3, wav, m4a)"),
+    lecture_title: str = Query(..., description="Human-readable name for this recording"),
+    course_title: str = Query(..., description="Course/subject name (shown in the summary and Obsidian note)"),
+    week_no: Optional[int] = Query(None, description="Week number (optional, used in Obsidian filename)"),
+    force: bool = Query(False, description="Override a stuck/stale record job"),
+):
+    """
+    Transcribe client-recorded audio and generate a lecture summary.
+
+    Upload an audio file recorded in the browser (WebM/OGG from MediaRecorder, or MP3/WAV).
+    The pipeline: transcribe (Groq Whisper, Korean) → summarize (Claude) → save to Obsidian.
+
+    Returns immediately. Poll `GET /record/status` for progress.
+    No authentication required.
+    """
+    status = get_record_status()
+    if status.running and not force:
+        raise HTTPException(
+            status_code=409,
+            detail="A record job is already running. Check /record/status or pass force=true.",
+        )
+
+    if not audio.filename:
+        raise HTTPException(status_code=422, detail="Audio file has no filename.")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="Uploaded audio file is empty.")
+
+    background_tasks.add_task(
+        start_record_background,
+        audio_bytes, audio.filename, lecture_title, course_title, week_no,
+    )
+    return RecordJobResponse(
+        success=True,
+        title=lecture_title,
+        message=f"Recording pipeline started for '{lecture_title}' ({course_title}). Poll /record/status for progress.",
+    )
+
+
+@router.get("/record/status", response_model=RecordStatusResponse)
+async def record_status():
+    """
+    Poll the status of the in-progress recording pipeline.
+
+    `step` values: transcribing | summarizing | saving | done | error
+    """
+    s = get_record_status()
+    return RecordStatusResponse(
+        running=s.running,
+        title=s.title,
+        step=s.step,
+        transcript=s.transcript,
+        summary=s.summary,
+        obsidian_path=s.obsidian_path,
+        error=s.error,
         started_at=s.started_at,
         finished_at=s.finished_at,
     )
