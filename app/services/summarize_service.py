@@ -22,7 +22,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 KWCOMMONS_BASE = "https://kwcommons.kw.ac.kr"
-OBSIDIAN_COURSES_PATH = "/Users/universe/Documents/Obsidian Vault/klas-user/semester/8/courses"
+OBSIDIAN_COURSES_PATH = settings.OBSIDIAN_COURSES_PATH
 
 
 # ── In-memory job state ───────────────────────────────────────────────────────
@@ -211,8 +211,13 @@ def save_to_obsidian(
     course_title: str,
     lecture_title: str,
     week_no: Optional[int] = None,
-) -> str:
-    """Write a Markdown note to the Obsidian klas-user vault. Returns the file path."""
+) -> Optional[str]:
+    """Write a Markdown note to the Obsidian vault. Returns the file path, or None
+    if `OBSIDIAN_COURSES_PATH` is unset (no-op mode for cloud / container deploys
+    where the local Obsidian vault doesn't exist)."""
+    if not OBSIDIAN_COURSES_PATH:
+        logger.info("OBSIDIAN_COURSES_PATH unset — skipping Obsidian save")
+        return None
     vault_root = Path(OBSIDIAN_COURSES_PATH).resolve()
     course_dir = (vault_root / _sanitize(course_title)).resolve()
     lectures_dir = (course_dir / "lectures").resolve()

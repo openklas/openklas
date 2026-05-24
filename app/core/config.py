@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     # Voyage AI (embeddings for RAG)
     VOYAGE_API_KEY: str
 
+    # Obsidian vault path (optional). When unset, save_to_obsidian is a no-op:
+    # transcripts and summaries are still returned in API responses, just not
+    # mirrored to the local filesystem. Required only on machines that host a
+    # personal Obsidian vault — leave unset on the container / cloud deployment.
+    OBSIDIAN_COURSES_PATH: str | None = None
+
     # Session Settings
     SESSION_EXPIRE_HOURS: int = 24
     TOKEN_LENGTH: int = 32
