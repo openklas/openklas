@@ -1,0 +1,74 @@
+# OpenKLAS local development stack.
+#
+# Start everything:    docker compose up
+# Background:          docker compose up -d
+# Rebuild after deps:  docker compose build api
+# Logs:                docker compose logs -f api
+# Shell into api:      docker compose exec api bash
+#
+# Required env (loaded from .env at the repo root): all KLAS_*, DATABASE_URL,
+# JWT_SECRET, ANTHROPIC_API_KEY, GROQ_API_KEY, SESSION_ENCRYPTION_KEY.
+# REDIS_URL and DATABASE_URL are overridden below to point at the compose
+# services rather than localhost.
+
+services:
+  api:
+    build:
+      context: .
+    image: openklas-backend:dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override host-side URLs so they resolve inside the compose network
+      DATABASE_URL: postgresql+asyncpg://openklas:${DEV_DB_PASSWORD:-openklas}@postgres:5432/openklas
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: openklas
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:-openklas}
+      POSTGRES_DB: openklas
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openklas -d openklas"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Optional: local Ollama for RAG. Comment out if you'd rather hit a
+  # remote Ollama or skip RAG entirely. Models must be pulled manually:
+  #     docker compose exec ollama ollama pull llama3.2:3b
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["rag"]   # enable with: docker compose --profile rag up
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  pg-data:
+  ollama-models:
