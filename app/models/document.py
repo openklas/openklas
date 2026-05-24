@@ -11,7 +11,7 @@ from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 
-EMBEDDING_DIM = 384
+EMBEDDING_DIM = 1024  # voyage-3 output
 
 
 class Document(Base):
