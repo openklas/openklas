@@ -1,0 +1,63 @@
+# Mirrors .gitignore plus things git tracks that don't belong in the image.
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Virtual environments (image builds its own at /opt/venv)
+.venv/
+venv/
+env/
+ENV/
+
+# Local config (compose loads .env via env_file, not COPY)
+.env
+.env.*
+!.env.example
+
+# Local-only / personal data
+evals/
+.mcp.json
+.claude/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Docs and Markdown — keep CLAUDE.md/CHANGELOG out of the image
+docs/
+*.md
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+logs/
+
+# Test scratch
+tmp/
+temp/
+.cache/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
