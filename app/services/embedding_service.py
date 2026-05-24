@@ -1,18 +1,32 @@
+"""Embedding service backed by Voyage AI.
+
+Replaces the previous sentence-transformers / cross-encoder local stack. The
+hosted approach removes ~3 GB of torch + model weights from the container
+image and gives us higher-quality multilingual embeddings (relevant given
+KLAS lecture materials are mostly Korean).
+
+We keep the same `embed()` API as the old service so call sites in
+`rag_service.py` are unaffected.
+"""
 from __future__ import annotations
 
-import numpy as np
-from sentence_transformers import CrossEncoder, SentenceTransformer
+import logging
 
-# Swap EMBEDDING_MODEL for a multilingual one (e.g. paraphrase-multilingual-MiniLM-L12-v2)
-# if your PDFs contain Korean text.
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+import voyageai
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# voyage-3 returns 1024-dim embeddings, supports 32 languages including Korean.
+# voyage-3-lite (512-dim) is cheaper but lower quality; pick voyage-3 for now.
+EMBEDDING_MODEL = "voyage-3"
+EMBEDDING_DIM = 1024
 
 
 class EmbeddingService:
     _instance: EmbeddingService | None = None
-    _embedder: SentenceTransformer | None = None
-    _reranker: CrossEncoder | None = None
+    _client: voyageai.Client | None = None
 
     @classmethod
     def get(cls) -> EmbeddingService:
@@ -20,22 +34,21 @@ class EmbeddingService:
             cls._instance = cls()
         return cls._instance
 
-    def _embedder_(self) -> SentenceTransformer:
-        if self._embedder is None:
-            self._embedder = SentenceTransformer(EMBEDDING_MODEL)
-        return self._embedder
+    def _client_(self) -> voyageai.Client:
+        if self._client is None:
+            self._client = voyageai.Client(api_key=settings.VOYAGE_API_KEY)
+        return self._client
 
-    def _reranker_(self) -> CrossEncoder:
-        if self._reranker is None:
-            self._reranker = CrossEncoder(RERANKER_MODEL)
-        return self._reranker
+    def embed(self, texts: list[str], *, input_type: str = "document") -> list[list[float]]:
+        """Embed a batch of texts.
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        embeddings = self._embedder_().encode(texts, normalize_embeddings=True)
-        return embeddings.tolist()
-
-    def rerank(self, query: str, passages: list[str], top_k: int) -> list[int]:
-        """Return indices of the top_k passages ranked by relevance score."""
-        scores = self._reranker_().predict([[query, p] for p in passages])
-        ranked = np.argsort(scores)[::-1][:top_k]
-        return ranked.tolist()
+        `input_type` is "document" for stored chunks and "query" for the
+        question at retrieval time — Voyage's models are asymmetric, so use
+        the right side for each call (improves retrieval quality).
+        """
+        result = self._client_().embed(
+            texts=texts,
+            model=EMBEDDING_MODEL,
+            input_type=input_type,
+        )
+        return result.embeddings

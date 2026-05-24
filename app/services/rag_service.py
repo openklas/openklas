@@ -1,3 +1,18 @@
+"""Per-user PDF RAG pipeline.
+
+Pipeline:
+    PDF bytes
+      → pdfplumber text extraction (page-aware)
+      → semantic chunking (paragraph/heading boundaries)
+      → Voyage AI embeddings
+      → pgvector storage
+      → cosine similarity retrieval
+      → Anthropic Claude answer generation
+
+The previous implementation used local Ollama + sentence-transformers, which
+inflated the container image by ~3 GB and required a GPU for decent latency.
+Hosted APIs replace both — see `embedding_service.py` for the embedder.
+"""
 from __future__ import annotations
 
 import re
@@ -5,20 +20,21 @@ import uuid
 from io import BytesIO
 
 import pdfplumber
-from ollama import AsyncClient
+from anthropic import AsyncAnthropic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.document import Document, DocumentChunk
 from app.services.embedding_service import EmbeddingService
 
-OLLAMA_MODEL = "llama3.2"
+# Generation model — Haiku is fast and cheap, plenty good for RAG synthesis.
+ANSWER_MODEL = "claude-haiku-4-5"
 MAX_CHUNK_SIZE = 1500
 MIN_CHUNK_SIZE = 100
-RETRIEVAL_TOP_K = 20
-RERANK_TOP_K = 5
+RETRIEVAL_TOP_K = 5
 
-_ollama = AsyncClient()
+_anthropic = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 def _semantic_chunks(text: str) -> list[str]:
@@ -78,7 +94,7 @@ async def ingest_pdf(
         raise ValueError("No extractable text found in the PDF.")
 
     texts = [t for t, _ in page_chunks]
-    embeddings = svc.embed(texts)
+    embeddings = svc.embed(texts, input_type="document")
 
     doc = Document(
         user_id=user_id,
@@ -109,10 +125,10 @@ async def query_rag(
     user_id: uuid.UUID,
     question: str,
     subject_code: str | None = None,
-    top_k: int = RERANK_TOP_K,
+    top_k: int = RETRIEVAL_TOP_K,
 ) -> str:
     svc = EmbeddingService.get()
-    q_embedding = svc.embed([question])[0]
+    q_embedding = svc.embed([question], input_type="query")[0]
 
     stmt = (
         select(DocumentChunk)
@@ -125,18 +141,14 @@ async def query_rag(
     stmt = (
         stmt
         .order_by(DocumentChunk.embedding.cosine_distance(q_embedding))
-        .limit(RETRIEVAL_TOP_K)
+        .limit(top_k)
     )
 
     result = await db.execute(stmt)
-    candidates = result.scalars().all()
+    top_chunks = result.scalars().all()
 
-    if not candidates:
+    if not top_chunks:
         return "No relevant materials found. Upload some PDFs first with POST /api/rag/ingest."
-
-    passages = [c.content for c in candidates]
-    top_indices = svc.rerank(question, passages, top_k=top_k)
-    top_chunks = [candidates[i] for i in top_indices]
 
     context = "\n\n---\n\n".join(c.content for c in top_chunks)
     prompt = (
@@ -146,11 +158,12 @@ async def query_rag(
         f"QUESTION: {question}"
     )
 
-    response = await _ollama.chat(
-        model=OLLAMA_MODEL,
+    response = await _anthropic.messages.create(
+        model=ANSWER_MODEL,
+        max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.message.content
+    return response.content[0].text
 
 
 async def delete_document(db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID) -> bool:
