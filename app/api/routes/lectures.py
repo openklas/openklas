@@ -24,7 +24,7 @@ from app.services.lecture_service import sync_all_lectures
 
 logger = logging.getLogger(__name__)
 
-OBSIDIAN_COURSES_PATH = "/Users/universe/Documents/Obsidian Vault/klas-user/semester/8/courses"
+OBSIDIAN_COURSES_PATH = settings.OBSIDIAN_COURSES_PATH
 
 
 def _sanitize(name: str) -> str:
@@ -34,7 +34,12 @@ def _sanitize(name: str) -> str:
     return cleaned
 
 
-def _save_to_obsidian(subject_name: str, filename: str, content: str) -> str:
+def _save_to_obsidian(subject_name: str, filename: str, content: str) -> Optional[str]:
+    """Write a markdown note to the Obsidian vault. Returns the file path, or
+    None if `OBSIDIAN_COURSES_PATH` is unset (no-op for cloud deploys)."""
+    if not OBSIDIAN_COURSES_PATH:
+        logger.info("OBSIDIAN_COURSES_PATH unset — skipping Obsidian save")
+        return None
     vault_root = FilePath(OBSIDIAN_COURSES_PATH).resolve()
     course_dir = (vault_root / _sanitize(subject_name) / "materials").resolve()
     if not course_dir.is_relative_to(vault_root):
