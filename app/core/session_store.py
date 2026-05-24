@@ -116,9 +116,11 @@ class RedisSessionStore:
         self._klas_cache: dict[str, Any] = {}
         self._lock = threading.RLock()
 
-        # Sanity-check connectivity on construction so misconfig fails loudly.
-        self._redis.ping()
-        logger.info("RedisSessionStore connected to %s", redis_url)
+        # Connection is verified on first session op (redis-py connects lazily).
+        # NOT at construction — `security.py` instantiates the store at import
+        # time for the legacy `sessions` compat shim, and a missing/down Redis
+        # must not break app startup, only the auth flow.
+        logger.info("RedisSessionStore configured for %s (connection deferred)", redis_url)
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
