@@ -1,6 +1,8 @@
 """
 KLAS API - Main application entry point
 """
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import FastApiMCP
@@ -10,6 +12,22 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag
+
+logger = logging.getLogger(__name__)
+
+# Sentry — initialize as early as possible so any subsequent import error,
+# startup failure, or request crash is captured. No-op when SENTRY_DSN is unset
+# (local dev typically runs without it).
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=settings.SENTRY_SEND_DEFAULT_PII,
+        debug=settings.SENTRY_DEBUG,
+    )
+    logger.info("Sentry initialized (env=%s)", settings.SENTRY_ENVIRONMENT)
 
 # Create FastAPI app
 app = FastAPI(
