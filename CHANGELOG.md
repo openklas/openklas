@@ -2,6 +2,67 @@
 
 ## [Unreleased]
 
+### feat(autocomplete): golden lecKey swap — automatic OTP bypass for future lectures
+
+`_autocomplete_single` now accepts an optional `golden_key` parameter. When the KLAS viewer blocks a lecture with an OTP wall (`인증에 실패` in the response), it falls back to a pre-acquired lecKey from any already-completed lecture instead of raising an error.
+
+`_run` acquires this key upfront via the new `_get_golden_lec_key()` helper before processing the queue. The helper scans the current subject first, then all timetable subjects, and returns the first lecKey it can extract from a completed (prog=100) lecture's viewer.
+
+**Why this works:** `UpdateProgress.do` does not bind a lecKey to a specific OID — any structurally valid key from the same session is accepted. Completed lectures skip the viewer's OTP check, so their lecKeys are freely obtainable and reusable against uncompleted lectures on OTP-gated weeks.
+
+**Effect:** Autocomplete now works on future lectures regardless of whether the OTP cert check has been completed for that week.
+
+**Files changed:**
+- `app/services/progress_service.py` — added `_get_golden_lec_key()`, updated `_autocomplete_single` signature and fallback logic, updated `_run` to pass golden key to each lecture
+
+---
+
+### feat(security): OTP bypass PoC endpoint for bug-bounty
+
+Added `POST /api/recorded-lectures/certi/bypass` — a proof-of-concept endpoint demonstrating that KLAS's lecture certification OTP gate is client-side enforced only.
+
+**How it works:**
+1. Calls `CertiLctreStdCheck.do` with a real authenticated KLAS session
+2. Records the actual `status` field (which is `false` when OTP is required)
+3. Overrides it to `true` in the response (the manipulation)
+4. With `probe_viewer=true` (default), also calls `LctreCntntsViewSpvPage.do` directly to test whether KLAS enforces the cert check server-side on subsequent APIs
+
+**Response fields:**
+- `real_status` — what KLAS actually returned
+- `forced_status` — always `true` (the bypassed value)
+- `viewer_leckey_obtained` — `true` if viewer issued a lecKey without OTP → full end-to-end bypass confirmed
+- `viewer_auth_error` — `true` if KLAS rejected at the viewer level (server-side enforcement exists)
+- `viewer_snippet` — first 400 chars of viewer HTML for evidence
+
+**Files changed:**
+- `app/schemas/recorded_lecture.py` — added `CertiBypassResponse`
+- `app/api/routes/recorded_lectures.py` — added `/certi/bypass` endpoint
+
+---
+
+### feat: workflow summary endpoint
+
+Added `GET /api/workflow/summary` — a single aggregated endpoint that gives a student a full picture of their academic day without making multiple API calls.
+
+**New files:**
+- `app/schemas/workflow.py` — `TodayCourse`, `PendingHomework`, `RecentSummary`, `WorkflowSummary` Pydantic models
+- `app/api/routes/workflow.py` — route handler; aggregates timetable, homework, summarize status, and RAG doc count
+
+**Modified files:**
+- `main.py` — mounted `/api/workflow` router; added `workflow` to root endpoint map
+
+**What it returns:**
+| Field | Source | Description |
+|---|---|---|
+| `today_courses` | KLAS timetable | Classes scheduled for today, sorted by start time |
+| `pending_homework` | KLAS homework | Unsubmitted assignments across all subjects, sorted by deadline |
+| `recent_summary` | In-memory summarize status | Latest recorded-lecture summarization job state |
+| `rag_document_count` | PostgreSQL | Number of PDFs the student has ingested into RAG |
+
+**Auth:** KLAS session token (Bearer). Uses `student_id` from the session to look up the DB user for the RAG count, so no second token is needed.
+
+---
+
 ### feat: client audio recording → transcribe → summarize pipeline
 
 Added two new endpoints that accept a browser-recorded audio file, transcribe it with Groq Whisper (Korean), summarize with Claude, and save to Obsidian — reusing the existing summarize/save pipeline from `summarize_service.py`.

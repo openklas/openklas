@@ -143,3 +143,28 @@ class AutocompleteStatusResponse(BaseModel):
     current_prog: float = 0.0
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+
+
+class CertiCheckResponse(BaseModel):
+    status: bool
+    otp_required: bool
+    email: Optional[str] = None
+    mobile: Optional[str] = None
+    message: str
+
+
+class CertiVerifyResponse(BaseModel):
+    success: bool
+    message: str
+
+
+class CertiBypassResponse(BaseModel):
+    """Bug-bounty PoC: OTP bypass via forced status=true."""
+    real_status: bool          # what KLAS actually returned
+    forced_status: bool        # always True (the manipulation)
+    email: Optional[str] = None
+    mobile: Optional[str] = None
+    viewer_leckey_obtained: Optional[bool] = None   # None = not attempted
+    viewer_auth_error: Optional[bool] = None
+    viewer_snippet: Optional[str] = None
+    message: str
