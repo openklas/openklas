@@ -1,15 +1,27 @@
-"""Background service that auto-watches KLAS recorded lectures using a headless browser."""
-import asyncio
+"""Background service that marks KLAS recorded lectures as watched via direct HTTP calls.
+
+Flow (reverse-engineered from KLAS JS):
+  1. POST LctreCntntsViewSpvPage.do  → HTML containing lecKey (bcrypt token)
+  2. Every 60 s: POST UpdateProgress.do  → returns prog (%)
+  3. Every 60 s: POST ChkLctreCntntsView.do  → duplicate-session check
+  4. Every 10 min: GET klas homepage + Frame.do  → keepalive
+  5. Stop when prog >= 100 or totalTime elapsed
+"""
 import logging
+import re
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from playwright.async_api import async_playwright, BrowserContext, Page
-
 from app.services.klas_service import KLASService
 
 logger = logging.getLogger(__name__)
+
+_VIEWER_BASE = "https://klas.kw.ac.kr/spv/lis/lctre/viewer"
+_KLAS_BASE = "https://klas.kw.ac.kr"
+_UPDATE_INTERVAL = 60  # seconds — matches KLAS JS setInterval
 
 
 # ── In-memory job state ───────────────────────────────────────────────────────
@@ -30,7 +42,6 @@ _statuses: dict[str, WatchStatus] = {}
 
 
 def get_status(student_id: str) -> WatchStatus:
-    """Return the per-user watch status, or a fresh empty one if no job has run."""
     return _statuses.get(student_id) or WatchStatus()
 
 
@@ -63,25 +74,112 @@ def _reset(lectures: list[dict], student_id: str) -> None:
     s.finished_at = None
 
 
-# ── Cookie extraction ─────────────────────────────────────────────────────────
+# ── Item helpers ──────────────────────────────────────────────────────────────
 
-def _get_klas_cookies(klas: KLASService) -> list[dict]:
-    cookies = []
-    for cookie in klas.session.cookies:
-        cookies.append({
-            "name": cookie.name,
-            "value": cookie.value,
-            "domain": cookie.domain or ".kw.ac.kr",
-            "path": cookie.path or "/",
-        })
-    return cookies
+def enrich_item(item: dict) -> dict:
+    """Flatten a raw KLAS recorded-lecture item into the shape watch_service needs."""
+    return {
+        "title":        item.get("sbjt") or item.get("oid") or "Unknown",
+        "url":          item.get("starting", ""),
+        "total_min":    int(item.get("totalTime") or item.get("rcognTime") or 30),
+        "prog":         item.get("prog", 0),
+        # Fields required by LctreCntntsViewSpvPage.do / UpdateProgress.do
+        "grcode":       item.get("grcode", "N000003"),
+        "subj":         item.get("subj", ""),
+        "year":         str(item.get("year", "")),
+        "hakgi":        str(item.get("hakgi", "")),
+        "bunban":       str(item.get("bunban", "01")),
+        "module":       str(item.get("module", "")),
+        "lesson":       str(item.get("lesson", "")),
+        "oid":          item.get("oid", ""),
+        "weeklyseq":    str(item.get("weeklyseq", "")),
+        "weeklysubseq": str(item.get("weeklysubseq", "1")),
+    }
 
 
-# ── Playback ──────────────────────────────────────────────────────────────────
+# ── KLAS HTTP helpers ─────────────────────────────────────────────────────────
 
-async def _watch_single(page: Page, lecture: dict, student_id: str) -> None:
+def _open_viewer(klas: KLASService, lecture: dict) -> str:
+    """POST to the viewer page and extract the lecKey from embedded JS."""
+    params = {
+        "grcode":       lecture["grcode"],
+        "subj":         lecture["subj"],
+        "year":         lecture["year"],
+        "hakgi":        lecture["hakgi"],
+        "bunban":       lecture["bunban"],
+        "module":       lecture["module"],
+        "lesson":       lecture["lesson"],
+        "oid":          lecture["oid"],
+        "ptime":        1,
+        "weeklyseq":    lecture["weeklyseq"],
+        "weeklysubseq": lecture["weeklysubseq"],
+        "totalTime":    0,
+        "prog":         0,
+        "profYN":       "N",
+        "previewYN":    "N",
+        "late":         "N",
+    }
+    resp = klas.session.post(f"{_VIEWER_BASE}/LctreCntntsViewSpvPage.do", data=params)
+    resp.raise_for_status()
+
+    match = re.search(r'"lecKey"\s*:\s*\'([^\']+)\'', resp.text)
+    if not match:
+        raise ValueError(f"lecKey not found in viewer page for oid={lecture['oid']}")
+
+    lec_key = match.group(1)
+    logger.info("Opened viewer for %s, lecKey=%.20s…", lecture["title"], lec_key)
+    return lec_key
+
+
+def _progress_params(lecture: dict, lec_key: str) -> dict:
+    return {
+        "year":         lecture["year"],
+        "subj":         lecture["subj"],
+        "bunban":       lecture["bunban"],
+        "hakgi":        lecture["hakgi"],
+        "module":       lecture["module"],
+        "lesson":       lecture["lesson"],
+        "oid":          lecture["oid"],
+        "weeklyseq":    lecture["weeklyseq"],
+        "weeklysubseq": lecture["weeklysubseq"],
+        "grcode":       lecture["grcode"],
+        "lecKey":       lec_key,
+        "isendfile":    "Y",
+    }
+
+
+def _post_update(klas: KLASService, lecture: dict, lec_key: str) -> dict:
+    resp = klas.session.post(
+        f"{_VIEWER_BASE}/UpdateProgress.do",
+        data=_progress_params(lecture, lec_key),
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _post_chk(klas: KLASService, lecture: dict, lec_key: str) -> None:
+    klas.session.post(
+        f"{_VIEWER_BASE}/ChkLctreCntntsView.do",
+        data=_progress_params(lecture, lec_key),
+    )
+
+
+def _keepalive(klas: KLASService, student_id: str) -> None:
+    try:
+        klas.session.get(f"{_KLAS_BASE}/")
+        klas.session.post(
+            f"{_KLAS_BASE}/std/cmn/frame/Frame.do",
+            data={"storeId": student_id, "storeIdChecked": "checked"},
+        )
+        logger.info("Session keepalive sent")
+    except Exception as e:
+        logger.warning("Keepalive failed: %s", e)
+
+
+# ── Core watch loop ───────────────────────────────────────────────────────────
+
+def _watch_single(klas: KLASService, lecture: dict, student_id: str) -> None:
     title = lecture["title"]
-    url = lecture["url"]
     total_min = lecture["total_min"]
 
     s = _ensure_status(student_id)
@@ -89,94 +187,54 @@ async def _watch_single(page: Page, lecture: dict, student_id: str) -> None:
     if title in s.pending:
         s.pending.remove(title)
 
-    logger.info("Watching: %s (%d min)", title, total_min)
+    logger.info("Starting HTTP watch: %s (%d min)", title, total_min)
 
-    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-    # Wait for kwcommons vc-player to fully initialize
-    await page.wait_for_timeout(10000)
+    lec_key = _open_viewer(klas, lecture)
 
-    # Click the kwcommons front-screen play button
-    for sel in [".vc-front-screen-play-btn", ".vc-front-mixed-play-btn", ".vc-pctrl-play-pause-btn"]:
-        try:
-            el = page.locator(sel).first
-            if await el.is_visible(timeout=2000):
-                await el.click()
-                logger.info("Clicked play: %s", sel)
-                break
-        except Exception:
-            continue
-
-    await page.wait_for_timeout(3000)
-
-    await page.evaluate("""
-        document.querySelectorAll('video').forEach(v => {
-            v.playbackRate = 2.0;
-            v.muted = true;
-        });
-    """)
-
-    wait_sec = int((total_min * 60) / 2 * 1.2)
     elapsed = 0
-    while elapsed < wait_sec:
-        chunk = min(30, wait_sec - elapsed)
-        await asyncio.sleep(chunk)
-        elapsed += chunk
+    keepalive_elapsed = 0
+    # Add a 10% buffer beyond totalTime; KLAS considers <100% incomplete
+    max_wait = (total_min + 5) * 60
+
+    while elapsed < max_wait:
+        time.sleep(_UPDATE_INTERVAL)
+        elapsed += _UPDATE_INTERVAL
+        keepalive_elapsed += _UPDATE_INTERVAL
+
         try:
-            await page.evaluate("""
-                document.querySelectorAll('video').forEach(v => {
-                    if (v.paused) v.play();
-                    v.playbackRate = 2.0;
-                    v.muted = true;
-                });
-            """)
-        except Exception:
-            pass
-        logger.info("Progress: %s — %dm/%dm elapsed", title, elapsed // 60, wait_sec // 60)
+            result = _post_update(klas, lecture, lec_key)
+            prog = float(result.get("prog", 0))
+            ptime = result.get("ptime", "?")
+            logger.info("%s — prog=%.1f%% ptime=%ss elapsed=%ds", title, prog, ptime, elapsed)
 
-    logger.info("Finished: %s", title)
+            if result.get("redirect"):
+                raise RuntimeError("KLAS session expired mid-watch")
 
+            if prog >= 100:
+                logger.info("✓ Completed: %s (prog=%.1f%%)", title, prog)
+                break
+        except Exception as e:
+            logger.error("UpdateProgress error for %s: %s", title, e)
 
-async def _browser_login(page: Page, student_id: str, password: str) -> None:
-    """Do a real KLAS login in the browser to establish all session cookies."""
-    logger.info("Performing browser login for %s", student_id)
-    await page.goto("https://klas.kw.ac.kr/usr/cmn/login/LoginForm.do", wait_until="domcontentloaded")
-    await page.wait_for_timeout(2000)
+        try:
+            _post_chk(klas, lecture, lec_key)
+        except Exception as e:
+            logger.warning("ChkLctreCntntsView error: %s", e)
 
-    await page.fill("#loginId", student_id)
-    await page.fill("#loginPwd", password)
-
-    # The login button is button.btn — KLAS JS handles RSA encryption on click
-    await page.click("button.btn:has-text('로그인')")
-
-    # Wait for redirect after successful login
-    await page.wait_for_timeout(5000)
-    logger.info("Browser login complete. URL: %s", page.url)
+        if keepalive_elapsed >= 600:
+            _keepalive(klas, student_id)
+            keepalive_elapsed = 0
 
 
-async def _run(klas: KLASService, lectures: list[dict], student_id: str, password: str) -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--autoplay-policy=no-user-gesture-required", "--mute-audio"],
-        )
-        context: BrowserContext = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
-        page = await context.new_page()
-
-        # Real browser login so kwcommons.kw.ac.kr session is established
-        await _browser_login(page, student_id, password)
-
-        s = _ensure_status(student_id)
-        for lecture in lectures:
-            try:
-                await _watch_single(page, lecture, student_id)
-                s.completed.append(lecture["title"])
-            except Exception as e:
-                logger.error("Failed to watch %s: %s", lecture["title"], e)
-                s.failed.append(lecture["title"])
-
-        await browser.close()
+def _run(klas: KLASService, lectures: list[dict], student_id: str) -> None:
+    s = _ensure_status(student_id)
+    for lecture in lectures:
+        try:
+            _watch_single(klas, lecture, student_id)
+            s.completed.append(lecture["title"])
+        except Exception as e:
+            logger.error("Failed: %s — %s", lecture.get("title"), e)
+            s.failed.append(lecture.get("title", "unknown"))
 
     s.running = False
     s.in_progress = None
@@ -197,19 +255,17 @@ def get_unwatched(klas: KLASService, year: int, semester: str) -> list[dict]:
             continue
         for item in items:
             prog = item.get("prog")
-            url = item.get("starting")
-            if prog is not None and prog < 100 and url:
-                total_min = int(item.get("totalTime") or item.get("rcognTime") or 30)
-                unwatched.append({
-                    "title": item.get("sbjt", "Unknown"),
-                    "url": url,
-                    "total_min": total_min,
-                    "prog": prog,
-                })
+            if prog is not None and prog < 100 and item.get("starting") and item.get("oid"):
+                unwatched.append(enrich_item(item))
     return unwatched
 
 
-def start_watch_background(klas: KLASService, lectures: list[dict], student_id: str, password: str) -> None:
-    """Called by FastAPI BackgroundTasks — initializes per-user status and runs the watcher."""
+def start_watch_background(klas: KLASService, lectures: list[dict], student_id: str, password: str = "") -> None:
+    """Spawn a daemon thread that drives the KLAS HTTP progress-tracking loop.
+
+    `password` is accepted for API compat but no longer used — the existing
+    KLASService requests.Session already carries the auth cookies.
+    """
     _reset(lectures, student_id)
-    asyncio.run(_run(klas, lectures, student_id, password))
+    t = threading.Thread(target=_run, args=(klas, lectures, student_id), daemon=True)
+    t.start()
