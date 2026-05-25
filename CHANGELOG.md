@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### feat(oauth): OAuth 2.0 connector support for Claude.ai and AI assistants
+
+Added a full OAuth 2.0 authorization server so users can connect KLAS to Claude.ai (and other AI assistants) via the "Add custom connector" dialog — no local setup required.
+
+**New files:**
+- `app/api/routes/oauth.py` — OAuth endpoints: `/.well-known/oauth-authorization-server`, `/oauth/register` (RFC 7591 dynamic client registration), `GET/POST /oauth/authorize` (HTML login form), `POST /oauth/token`
+- `app/models/oauth.py` — `OAuthToken` DB model: stores long-lived access token + Fernet-encrypted KLAS credentials per student
+- `app/core/encryption.py` — Fernet encryption utility; uses `OAUTH_ENCRYPTION_KEY` (falls back to `SESSION_ENCRYPTION_KEY`)
+- `alembic/versions/b1c2d3e4f5a6_add_oauth_tokens.py` — migration for `oauth_tokens` table
+
+**Modified files:**
+- `app/core/config.py` — added `OAUTH_ENCRYPTION_KEY` setting
+- `app/api/deps.py` — `get_current_user_from_klas_session` now accepts both KLAS session tokens (direct login) and long-lived OAuth access tokens (connector flow); OAuth tokens trigger silent KLAS re-login when the 1h session expires
+- `main.py` — OAuth router mounted at root (no prefix)
+
+**User flow:** User adds the MCP server URL to Claude → OAuth redirect → enters KLAS credentials once on the hosted login page → credentials stored AES-256 encrypted → Claude gets a long-lived token and never needs credentials again; KLAS sessions auto-refresh silently.
+
+**Required env var:** Set `OAUTH_ENCRYPTION_KEY` (or `SESSION_ENCRYPTION_KEY`) to a Fernet key. Generate with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
 ### fix: run alembic migration to resize RAG embedding column 384→1024
 
 Ran `alembic upgrade head` to apply migration `a3e7c2b9f1d5` which resizes `document_chunks.embedding` from 384 to 1024 dimensions for Voyage AI embeddings. POST `/api/rag/ingest` was returning 500 due to the column/model mismatch.

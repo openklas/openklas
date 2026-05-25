@@ -123,7 +123,7 @@ async def watch_lecture(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.get("/watch/status", response_model=WatchStatusResponse)
+@router.get("/watch/status", response_model=WatchStatusResponse, operation_id="watch_status")
 async def watch_status(session: dict = Depends(get_session_data)):
     """
     Get the current status of the background watch job for the authenticated user.
@@ -174,7 +174,7 @@ async def list_recorded_lectures(
         raise HTTPException(status_code=500, detail=f"Error fetching recorded lectures: {str(e)}")
 
 
-@router.get("/all", response_model=AllRecordedLecturesResponse)
+@router.get("/all", response_model=AllRecordedLecturesResponse, operation_id="list_all_recorded_lectures")
 async def list_all_recorded_lectures(
     year: Optional[int] = Query(None, description="Academic year. Defaults to current year."),
     semester: Optional[str] = Query(None, description="Semester: '1' or '2'. Defaults to current."),
@@ -216,7 +216,7 @@ async def list_all_recorded_lectures(
         raise HTTPException(status_code=500, detail=f"Error fetching recorded lectures: {str(e)}")
 
 
-@router.post("/summarize", response_model=SummarizeJobResponse)
+@router.post("/summarize", response_model=SummarizeJobResponse, operation_id="summarize_recorded_lecture")
 async def summarize_recorded_lecture(
     background_tasks: BackgroundTasks,
     subject_code: str = Query(..., description="Subject code (e.g. U202610846I030014)"),
@@ -287,7 +287,7 @@ async def summarize_recorded_lecture(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.get("/summarize/status", response_model=SummarizeStatusResponse)
+@router.get("/summarize/status", response_model=SummarizeStatusResponse, operation_id="summarize_status")
 async def summarize_status(session: dict = Depends(get_session_data)):
     """
     Get the current status of the background summarize pipeline for the authenticated user.
@@ -311,7 +311,7 @@ async def summarize_status(session: dict = Depends(get_session_data)):
     )
 
 
-@router.post("/autocomplete", response_model=AutocompleteJobResponse)
+@router.post("/autocomplete", response_model=AutocompleteJobResponse, operation_id="autocomplete_lecture")
 async def autocomplete_lecture(
     background_tasks: BackgroundTasks,
     subject_code: str = Query(..., description="Subject code from timetable"),
@@ -467,7 +467,7 @@ async def autocomplete_status(session: dict = Depends(get_session_data)):
     )
 
 
-@router.post("/certi/debug")
+@router.post("/certi/debug", operation_id="certi_debug")
 async def certi_debug(
     subject_code: str = Query(...),
     week_no: int = Query(...),
@@ -514,7 +514,7 @@ async def certi_debug(
     return results
 
 
-@router.post("/certi/request", response_model=CertiCheckResponse)
+@router.post("/certi/request", response_model=CertiCheckResponse, operation_id="certi_request_otp")
 async def certi_request_otp(
     subject_code: str = Query(..., description="Subject code (e.g. U202610846I030014)"),
     week_no: int = Query(..., description="Week number (weeklyseq from lecture list)"),
@@ -591,7 +591,7 @@ async def certi_request_otp(
     )
 
 
-@router.post("/certi/verify", response_model=CertiVerifyResponse)
+@router.post("/certi/verify", response_model=CertiVerifyResponse, operation_id="certi_verify_otp")
 async def certi_verify_otp(
     subject_code: str = Query(..., description="Subject code (e.g. U202610846I030014)"),
     week_no: int = Query(..., description="Week number"),
@@ -658,7 +658,7 @@ async def certi_verify_otp(
         )
 
 
-@router.post("/certi/bypass", response_model=CertiBypassResponse)
+@router.post("/certi/bypass", response_model=CertiBypassResponse, operation_id="certi_bypass_otp")
 async def certi_bypass_otp(
     subject_code: str = Query(..., description="Subject code (e.g. U202610846I030014)"),
     week_no: int = Query(..., description="Week number (weeklyseq from lecture list)"),
@@ -843,7 +843,7 @@ async def record_lecture(
     )
 
 
-@router.get("/record/status", response_model=RecordStatusResponse)
+@router.get("/record/status", response_model=RecordStatusResponse, operation_id="record_status")
 async def record_status(session: dict = Depends(get_session_data)):
     """
     Poll the recording pipeline status for the authenticated user.

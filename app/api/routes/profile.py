@@ -207,7 +207,7 @@ async def get_profile_image(klas: KLASService = Depends(get_klas_service)):
         )
 
 
-@router.get("/settings", response_model=ProfileSettingsResponse)
+@router.get("/settings", response_model=ProfileSettingsResponse, operation_id="get_profile_settings")
 async def get_profile_settings(
     klas: KLASService = Depends(get_klas_service),
     current_user=Depends(get_current_user_from_klas_session),
@@ -239,7 +239,7 @@ async def get_profile_settings(
     return out
 
 
-@router.patch("/settings", response_model=ProfileSettingsResponse)
+@router.patch("/settings", response_model=ProfileSettingsResponse, operation_id="update_profile_settings")
 async def update_profile_settings(
     body: ProfileSettingsUpdate,
     db: DbSession,

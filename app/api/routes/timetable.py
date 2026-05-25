@@ -79,7 +79,7 @@ async def get_timetable(
         )
 
 
-@router.get("/schedule", response_model=UniversityScheduleResponse)
+@router.get("/schedule", response_model=UniversityScheduleResponse, operation_id="get_university_schedule")
 async def get_university_schedule(
     start_date: str,
     end_date: str,

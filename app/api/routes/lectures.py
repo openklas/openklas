@@ -127,7 +127,7 @@ async def list_lectures(
     )
 
 
-@router.get("/{subject_code}", response_model=LectureListResponse)
+@router.get("/{subject_code}", response_model=LectureListResponse, operation_id="list_lectures_for_subject")
 async def list_lectures_for_subject(
     subject_code: str = Path(..., description="Subject code from timetable"),
     year: Optional[int] = Query(None),

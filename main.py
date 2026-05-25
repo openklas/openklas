@@ -11,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag, workflow
+from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag, workflow, oauth
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(oauth.router, tags=["OAuth"])  # no prefix — /.well-known/* and /oauth/* at root
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(timetable.router, prefix="/api/timetable", tags=["Timetable"])

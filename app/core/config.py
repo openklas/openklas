@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # Required when REDIS_URL is set — used to encrypt KLAS passwords at rest.
     SESSION_ENCRYPTION_KEY: str | None = None
+    # Fernet key for encrypting OAuth credentials stored in the DB.
+    # Falls back to SESSION_ENCRYPTION_KEY if unset. At least one must be set
+    # when using the OAuth connector flow.
+    OAUTH_ENCRYPTION_KEY: str | None = None
 
     # Old Login Security Settings (not used)
     JWT_SECRET: str

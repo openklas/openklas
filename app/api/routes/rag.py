@@ -63,7 +63,7 @@ async def list_documents(current_user: CurrentUser, db: DbSession):
     return result.scalars().all()
 
 
-@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="remove_document")
 async def remove_document(document_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     """Delete a document and all its chunks."""
     deleted = await delete_document(db, current_user.id, document_id)

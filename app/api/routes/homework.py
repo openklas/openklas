@@ -103,7 +103,7 @@ async def get_homework_detail(
         raise HTTPException(status_code=500, detail=f"Error fetching homework detail: {str(e)}")
 
 
-@router.get("/files/{attach_id}", response_model=HomeworkFilesResponse)
+@router.get("/files/{attach_id}", response_model=HomeworkFilesResponse, operation_id="get_homework_files")
 async def get_homework_files(
     attach_id: str,
     klas: KLASService = Depends(get_klas_service),
