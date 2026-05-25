@@ -125,7 +125,7 @@ async def get_homework_files(
         raise HTTPException(status_code=500, detail=f"Error fetching homework files: {str(e)}")
 
 
-@router.get("/files/{attach_id}/{file_sn}/ask")
+@router.get("/files/{attach_id}/{file_sn}/ask", operation_id="ask_homework_file")
 async def ask_about_homework_file(
     attach_id: str = Path(..., description="atchFileId from homework detail"),
     file_sn: int = Path(..., description="fileSn from file list"),
@@ -191,7 +191,7 @@ async def ask_about_homework_file(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.get("/files/{attach_id}/{file_sn}/download")
+@router.get("/files/{attach_id}/{file_sn}/download", operation_id="download_homework_file")
 async def download_homework_file(
     attach_id: str = Path(..., description="atchFileId from homework detail"),
     file_sn: int = Path(..., description="fileSn from file list"),

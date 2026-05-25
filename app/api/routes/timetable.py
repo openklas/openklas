@@ -130,15 +130,17 @@ async def get_session_info(credentials: HTTPAuthorizationCredentials = Depends(s
             detail="Invalid or expired token"
         )
     
-    # Calculate remaining time as expires_at - now, clamped to zero if negative
+    expires_at = session_data['expires_at']
     now = datetime.now()
-    time_remaining = session_data['expires_at'] - now
-    time_remaining = max(timedelta(0), time_remaining)  # Clamp to zero if negative
-    
+    time_remaining = max(timedelta(0), expires_at - now)
+
+    from app.core.config import settings as _cfg
+    created_at = session_data.get('created_at') or (expires_at - timedelta(hours=_cfg.SESSION_EXPIRE_HOURS))
+
     return SessionInfo(
         student_id=session_data['student_id'],
-        created_at=session_data['created_at'].isoformat(),
-        expires_at=session_data['expires_at'].isoformat(),
+        created_at=created_at.isoformat(),
+        expires_at=expires_at.isoformat(),
         time_remaining=str(time_remaining)
     )
 

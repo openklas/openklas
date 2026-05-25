@@ -148,9 +148,11 @@ class RedisSessionStore:
         expires_at = datetime.now() + timedelta(hours=settings.SESSION_EXPIRE_HOURS)
         ttl_seconds = settings.SESSION_EXPIRE_HOURS * 3600
 
+        created_at = datetime.now()
         payload = {
             "student_id": student_id,
             "encrypted_password": self._encrypt(password),
+            "created_at": created_at.isoformat(),
             "expires_at": expires_at.isoformat(),
         }
         self._redis.set(self._key(token), json.dumps(payload), ex=ttl_seconds)
@@ -192,10 +194,12 @@ class RedisSessionStore:
             with self._lock:
                 self._klas_cache[token] = klas
 
+        created_at = datetime.fromisoformat(payload["created_at"]) if "created_at" in payload else expires_at - timedelta(hours=settings.SESSION_EXPIRE_HOURS)
         return {
             "klas": klas,
             "student_id": payload["student_id"],
             "password": self._decrypt(payload["encrypted_password"]),
+            "created_at": created_at,
             "expires_at": expires_at,
         }
 

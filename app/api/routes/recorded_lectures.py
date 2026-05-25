@@ -373,7 +373,7 @@ async def autocomplete_lecture(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/autocomplete/all", response_model=AutocompleteJobResponse)
+@router.post("/autocomplete/all", response_model=AutocompleteJobResponse, operation_id="autocomplete_all_lectures")
 async def autocomplete_all_lectures(
     background_tasks: BackgroundTasks,
     year: Optional[int] = Query(None),
@@ -444,7 +444,7 @@ async def autocomplete_all_lectures(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/autocomplete/status", response_model=AutocompleteStatusResponse)
+@router.get("/autocomplete/status", response_model=AutocompleteStatusResponse, operation_id="autocomplete_status")
 async def autocomplete_status(session: dict = Depends(get_session_data)):
     """
     Poll the autocomplete job status for the authenticated user.

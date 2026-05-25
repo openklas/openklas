@@ -229,7 +229,7 @@ async def ask_about_lecture(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@router.get("/summarize/{subject_code}")
+@router.get("/summarize/{subject_code}", operation_id="summarize_subject_lectures")
 async def summarize_subject_lectures(
     subject_code: str = Path(..., description="Subject code from timetable"),
     year: Optional[int] = Query(None),

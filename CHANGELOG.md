@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### fix: run alembic migration to resize RAG embedding column 384→1024
+
+Ran `alembic upgrade head` to apply migration `a3e7c2b9f1d5` which resizes `document_chunks.embedding` from 384 to 1024 dimensions for Voyage AI embeddings. POST `/api/rag/ingest` was returning 500 due to the column/model mismatch.
+
+### fix(session): RedisSessionStore.get() now returns created_at; session/info endpoint defensive fallback
+
+`RedisSessionStore.get()` was missing `created_at` in its return dict, causing `GET /api/timetable/session/info` to throw `KeyError` → 500. Fixed in two places: the store now stores and returns `created_at`, and the endpoint falls back to computing it from `expires_at - SESSION_EXPIRE_HOURS` for sessions created before this fix. **Requires server restart to take effect.**
+
+### docs: add comprehensive API reference for frontend clients
+
+Created `docs/API.md` — a full REST API reference covering all 40+ endpoints across authentication, profile, timetable, homework, lecture materials, recorded lectures, RAG, and workflow. Documents request/response schemas, query parameters, auth requirements, error codes, and the two-token system (KLAS session token vs JWT access token).
+
+
 ### feat(autocomplete): golden lecKey swap — automatic OTP bypass for future lectures
 
 `_autocomplete_single` now accepts an optional `golden_key` parameter. When the KLAS viewer blocks a lecture with an OTP wall (`인증에 실패` in the response), it falls back to a pre-acquired lecKey from any already-completed lecture instead of raising an error.
