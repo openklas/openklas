@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.oauth import OAuthToken
 from app.core.security import decode_access_token, get_session, create_session
 from app.core.encryption import decrypt
+from app.core.session_store import get_session_store
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -22,8 +23,8 @@ security_bearer_optional = HTTPBearer(auto_error=False)
 async def _resolve_oauth_token(token: str, db: AsyncSession) -> User | None:
     """
     Resolve a long-lived OAuth access token to a User.
-    Auto-refreshes the underlying KLAS session when it expires.
-    Returns None if the token is not found.
+    Auto-refreshes the KLAS session when expired, then registers the OAuth
+    token directly in the session store so all route-level deps work.
     """
     result = await db.execute(
         select(OAuthToken).where(OAuthToken.access_token == token)
@@ -33,44 +34,41 @@ async def _resolve_oauth_token(token: str, db: AsyncSession) -> User | None:
         return None
 
     now = datetime.now()
-    klas_session_token = record.klas_session_token
+    from app.services.klas_service import KLASService
+
+    existing_session = get_session(record.klas_session_token) if record.klas_session_token else None
     needs_refresh = (
-        not klas_session_token
+        not existing_session
         or not record.klas_session_expires_at
         or now >= record.klas_session_expires_at
     )
 
-    if needs_refresh:
-        # Silently re-login to KLAS using stored encrypted credentials
-        from app.services.klas_service import KLASService
-        try:
-            sid = decrypt(record.encrypted_student_id)
-            pw = decrypt(record.encrypted_password)
+    try:
+        sid = decrypt(record.encrypted_student_id)
+        pw = decrypt(record.encrypted_password)
+
+        if needs_refresh:
             klas = KLASService()
             if not klas.login(sid, pw):
                 raise RuntimeError("KLAS re-login failed")
             klas_session_token = create_session(sid, klas, pw)
             record.klas_session_token = klas_session_token
             record.klas_session_expires_at = now + timedelta(minutes=55)
-        except Exception as e:
-            logger.error("OAuth session refresh failed for student %s: %s", record.student_id, e)
-            return None
+        else:
+            klas = existing_session["klas"]  # type: ignore[index]
+
+        # Register the OAuth access token directly in the session store so
+        # route-level deps (get_klas_service, get_session_data) can find it
+        # via get_session(bearer_token) without knowing about OAuth tokens.
+        if not get_session(token):
+            get_session_store().create_for(token, sid, klas, pw)
+
+    except Exception as e:
+        logger.error("OAuth token resolution failed for %s: %s", record.student_id, e)
+        return None
 
     record.last_used_at = now
     await db.commit()
-
-    # Ensure the refreshed KLAS session is available to route handlers
-    # by injecting it into the in-memory session store if needed.
-    if not get_session(klas_session_token):
-        from app.services.klas_service import KLASService
-        try:
-            sid = decrypt(record.encrypted_student_id)
-            pw = decrypt(record.encrypted_password)
-            klas = KLASService()
-            klas.login(sid, pw)
-            create_session(sid, klas, pw)
-        except Exception as e:
-            logger.error("Could not rehydrate KLAS session: %s", e)
 
     result2 = await db.execute(
         select(User).where(User.student_id == record.student_id)

@@ -41,6 +41,7 @@ class Session(TypedDict, total=False):
 
 class SessionStore(Protocol):
     def create(self, student_id: str, klas_instance: Any, password: str) -> str: ...
+    def create_for(self, token: str, student_id: str, klas_instance: Any, password: str) -> None: ...
     def get(self, token: str) -> Optional[Session]: ...
     def delete(self, token: str) -> bool: ...
     def count(self) -> int: ...
@@ -57,6 +58,10 @@ class InMemorySessionStore:
 
     def create(self, student_id: str, klas_instance: Any, password: str) -> str:
         token = secrets.token_urlsafe(settings.TOKEN_LENGTH)
+        self.create_for(token, student_id, klas_instance, password)
+        return token
+
+    def create_for(self, token: str, student_id: str, klas_instance: Any, password: str) -> None:
         self._sessions[token] = {
             "klas": klas_instance,
             "student_id": student_id,
@@ -64,7 +69,6 @@ class InMemorySessionStore:
             "created_at": datetime.now(),
             "expires_at": datetime.now() + timedelta(hours=settings.SESSION_EXPIRE_HOURS),
         }
-        return token
 
     def get(self, token: str) -> Optional[Session]:
         s = self._sessions.get(token)
@@ -161,6 +165,19 @@ class RedisSessionStore:
             self._klas_cache[token] = klas_instance
 
         return token
+
+    def create_for(self, token: str, student_id: str, klas_instance: Any, password: str) -> None:
+        expires_at = datetime.now() + timedelta(hours=settings.SESSION_EXPIRE_HOURS)
+        ttl_seconds = settings.SESSION_EXPIRE_HOURS * 3600
+        payload = {
+            "student_id": student_id,
+            "encrypted_password": self._encrypt(password),
+            "created_at": datetime.now().isoformat(),
+            "expires_at": expires_at.isoformat(),
+        }
+        self._redis.set(self._key(token), json.dumps(payload), ex=ttl_seconds)
+        with self._lock:
+            self._klas_cache[token] = klas_instance
 
     def get(self, token: str) -> Optional[Session]:
         # Cache-side check (cheap): if we have the live KLASService AND Redis still has the token,
