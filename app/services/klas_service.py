@@ -635,6 +635,158 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse recorded lectures response: {e}")
 
+    def get_course_info(self, subject_code: str) -> Dict[str, Any]:
+        """
+        Get course syllabus info from LectrePlanData.do.
+
+        Returns a dict with keys:
+            course_name, course_type, course_credits, prof_name, prof_email
+
+        Raises:
+            ConnectionError: If request fails
+            ValueError: If response cannot be parsed or course not found
+        """
+        payload = {
+            "info": "",
+            "selectSubj": subject_code,
+            "selectGrcode": "",
+            "selectYear": "",
+            "selecthakgi": "",
+            "selectRadio": "",
+            "selectText": "",
+            "selectProfsr": "",
+            "gwamokKname": "",
+            "openCode": "",
+            "incLc": "popup",
+            "times": None,
+            "teamName": None,
+            "teamEmail": None,
+            "astntName": None,
+            "astntEmail": None,
+            "perCheck": 0,
+            "gitaDetail": "",
+            "engOptCheck": "",
+            "frnOptCheck": "",
+            "foreignOpt": "",
+            "recOptCheck": "",
+            "engOpt": "",
+            "beforData": "",
+            "LrnRsltList": "",
+            "experimentPlan": "",
+            "experimentPlanList": [],
+            "getScore1": "",
+            "getScore2": "",
+            "getScore3": "",
+            "exmPlan": "",
+            "target": "",
+            "analysis": "",
+            "manufacture": "",
+            "test": "",
+            "evaluation": "",
+            "composition": "",
+            "compositionEtc": "",
+            "economic": "",
+            "environment": "",
+            "social": "",
+            "ethics": "",
+            "esthetic": "",
+            "safety": "",
+            "production": "",
+            "durability": "",
+            "standard": "",
+            "actualEtc": "",
+            "pa1": "",
+            "pa2": "",
+            "pa3": "",
+            "pa4": "",
+            "pa5": "",
+            "pa6": "",
+            "pa7": "",
+            "attendBiyul": "",
+            "middleBiyul": "",
+            "lastBiyul": "",
+            "reportBiyul": "",
+            "learnBiyul": "",
+            "quizBiyul": "",
+            "gitaBiyul": "",
+            "attendExpect": "",
+            "middleExpect": "",
+            "lastExpect": "",
+            "reportExpect": "",
+            "learnExpect": "",
+            "quizExpect": "",
+            "gitaExpect": "",
+            "tblOpt": "",
+            "pblOpt": "",
+            "seminarOpt": "",
+            "onlineOpt": "",
+            "typeSmall": "",
+            "typeWork": "",
+            "typeTeam": "",
+            "typeFusion": "",
+            "typeElearn": "",
+            "typeBlended": "",
+            "typeForeigner": "",
+            "typeExperiment": "",
+            "typeJibjung": "",
+            "typeFlipped": "",
+            "lectureOpt": "",
+            "discussionOpt": "",
+            "reportOpt": "",
+            "testOpt": "",
+            "practiceOpt": "",
+            "computerOpt": "",
+            "projectOpt": "",
+            "vtrOpt": "",
+            "face100Opt": "",
+            "faceliveOpt": "",
+            "live100Opt": "",
+            "facerecOpt": "",
+            "recliveOpt": "",
+            "rec100Opt": "",
+            "faceliverecOpt": "",
+            "recVideo": "",
+            "recReport": "",
+            "recQuiz": "",
+            "recQna": "",
+            "recEtc": "",
+            "recEtcDetail": "",
+            "jointLectureOpt": "",
+            "fieldTripOpt": "",
+            "internshipOpt": "",
+            "invitationSeminarOpt": "",
+            "outsideEvaluationOpt": "",
+            "etcOpt": "",
+            "evaluationOpt": "",
+            "weekLecture": [],
+            "weekSubs": [],
+            "weekBigo": [],
+            "stopFlag": "",
+        }
+        try:
+            response = self.session.post(
+                settings.KLAS_COURSE_INFO_URL,
+                json=payload,
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data if isinstance(data, list) else []
+            if not items:
+                raise ValueError(f"No course info found for subject: {subject_code}")
+            item = items[0]
+            return {
+                "course_name": item.get("gwamokkename", ""),
+                "course_type": item.get("codeName1", ""),
+                "course_credits": item.get("hakjumNum", 0),
+                "prof_name": item.get("memberName", ""),
+                "prof_email": item.get("addinfoemail", ""),
+            }
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch course info: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse course info response: {e}")
+
     def get_homework_file_bytes(self, attach_id: str, file_sn: int) -> bytes:
         """Download a homework attachment and return raw bytes."""
         url = f"{settings.KLAS_BASE_URL}/common/file/DownloadFile/{attach_id}/{file_sn}"

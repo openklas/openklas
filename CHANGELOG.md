@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### feat(lectures): GET /api/lectures/course/{subject_code} — course syllabus info
+
+New endpoint that fetches course metadata from KLAS `LectrePlanData.do` for a given subject code and returns a clean summary: course name, type (e.g. 전선), credit count, professor name, and professor email.
+
+**Changed files:**
+- `app/core/config.py` — added `KLAS_COURSE_INFO_URL` setting
+- `.env` — added `KLAS_COURSE_INFO_URL=https://klas.kw.ac.kr/std/cps/atnlc/LectrePlanData.do`
+- `app/services/klas_service.py` — added `get_course_info(subject_code)` method
+- `app/schemas/lecture.py` — added `CourseInfo` and `CourseInfoResponse` schemas
+- `app/api/routes/lectures.py` — added `GET /course/{subject_code}` endpoint
+
 ### feat(oauth): OAuth 2.0 connector support for Claude.ai and AI assistants
 
 Added a full OAuth 2.0 authorization server so users can connect KLAS to Claude.ai (and other AI assistants) via the "Add custom connector" dialog — no local setup required.

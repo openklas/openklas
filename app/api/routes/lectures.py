@@ -18,6 +18,7 @@ from app.models.lecture import LectureMaterial
 from app.schemas.lecture import (
     LectureListResponse, LectureMaterialItem,
     LectureSyncResponse, LectureAskResponse,
+    CourseInfo, CourseInfoResponse,
 )
 from app.services.klas_service import KLASService
 from app.services.lecture_service import sync_all_lectures
@@ -112,6 +113,31 @@ async def list_lectures(
         items=[LectureMaterialItem.model_validate(i) for i in items],
         total=len(items),
     )
+
+
+@router.get("/course/{subject_code}", response_model=CourseInfoResponse)
+async def get_course_info(
+    subject_code: str = Path(..., description="Subject code from timetable (e.g. U202610846I030014)"),
+    klas: KLASService = Depends(get_klas_service),
+):
+    """
+    Get course syllabus info: name, type, credits, professor name and email.
+
+    Requires: Bearer token in Authorization header
+    """
+    try:
+        info = klas.get_course_info(subject_code)
+        return CourseInfoResponse(
+            success=True,
+            subject_code=subject_code,
+            course=CourseInfo(**info),
+        )
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"KLAS service unavailable: {str(e)}")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 @router.get("/{subject_code}", response_model=LectureListResponse, operation_id="list_lectures_for_subject")

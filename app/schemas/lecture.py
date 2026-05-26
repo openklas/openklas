@@ -43,3 +43,17 @@ class LectureAskResponse(BaseModel):
     post_title: str
     question: str
     answer: str
+
+
+class CourseInfo(BaseModel):
+    course_name: str
+    course_type: str
+    course_credits: int
+    prof_name: str
+    prof_email: str
+
+
+class CourseInfoResponse(BaseModel):
+    success: bool
+    subject_code: str
+    course: CourseInfo
