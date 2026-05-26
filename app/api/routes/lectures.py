@@ -151,7 +151,7 @@ async def ask_about_lecture(
     board_no: int = Path(..., description="boardNo from lecture list"),
     question: str = Query(..., description="Question to ask about this lecture"),
     klas: KLASService = Depends(get_klas_service),
-    user: CurrentUserFromKlas = Depends(),
+    user: CurrentUserFromKlas = None,
     db: DbSession = None,
 ):
     """
@@ -236,7 +236,7 @@ async def summarize_subject_lectures(
     semester: Optional[str] = Query(None),
     force: bool = Query(False, description="Re-summarize even if a cached summary exists"),
     klas: KLASService = Depends(get_klas_service),
-    user: CurrentUserFromKlas = Depends(),
+    user: CurrentUserFromKlas = None,
     db: DbSession = None,
 ):
     """

@@ -199,7 +199,7 @@ async def summarize_recorded_lecture(
     semester: Optional[str] = Query(None),
     force: bool = Query(False, description="Re-summarize even if a cached summary exists"),
     session: dict = Depends(get_session_data),
-    user: CurrentUserFromKlas = Depends(),
+    user: CurrentUserFromKlas = None,
     db: DbSession = None,
 ):
     """
