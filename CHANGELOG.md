@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### feat(homework): GET /api/homework/team-projects — team project list
+
+New endpoint that fetches team project assignments from KLAS `PrjctStdList.do` for a given subject code. Returns project title, dates, submission status, team number, and team purpose, sorted most-recent first.
+
+**Changed files:**
+- `app/core/config.py` — added `KLAS_TEAM_PROJECT_URL` setting
+- `.env` — added `KLAS_TEAM_PROJECT_URL=https://klas.kw.ac.kr/std/lis/evltn/PrjctStdList.do`
+- `app/services/klas_service.py` — added `get_team_projects(subject_code, year, semester)` method
+- `app/schemas/homework.py` — added `TeamProject` and `TeamProjectListResponse` schemas
+- `app/api/routes/homework.py` — added `GET /team-projects` endpoint
+
 ### feat(lectures): GET /api/lectures/course/{subject_code} — course syllabus info
 
 New endpoint that fetches course metadata from KLAS `LectrePlanData.do` for a given subject code and returns a clean summary: course name, type (e.g. 전선), credit count, professor name, and professor email.

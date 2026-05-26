@@ -13,6 +13,7 @@ from app.schemas.homework import (
     AllHomeworkResponse, CourseHomework,
     HomeworkDetailResponse, HomeworkDetail,
     HomeworkFilesResponse, HomeworkFile,
+    TeamProject, TeamProjectListResponse,
 )
 from app.services.klas_service import KLASService
 from app.api.deps import get_klas_service
@@ -202,6 +203,28 @@ async def download_homework_file(
         raise HTTPException(status_code=503, detail=f"KLAS service unavailable: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
+
+
+@router.get("/team-projects", response_model=TeamProjectListResponse)
+async def get_team_projects(
+    subject_code: str = Query(..., description="Subject code from timetable (e.g. U202613683I030014)"),
+    year: Optional[int] = Query(None, description="Academic year. Defaults to current year."),
+    semester: Optional[str] = Query(None, description="Semester: '1' or '2'. Defaults to current."),
+    klas: KLASService = Depends(get_klas_service),
+):
+    """
+    Get team project list for a subject, sorted most-recent first.
+
+    Requires: Bearer token in Authorization header
+    """
+    try:
+        raw = klas.get_team_projects(subject_code, year, semester)
+        items = [TeamProject.model_validate(item) for item in raw]
+        return TeamProjectListResponse(success=True, subject_code=subject_code, items=items)
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"KLAS service unavailable: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching team projects: {str(e)}")
 
 
 @router.get("", response_model=HomeworkResponse)

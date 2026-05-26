@@ -635,6 +635,38 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse recorded lectures response: {e}")
 
+    def get_team_projects(self, subject_code: str, year: Optional[int] = None, semester: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get team project list for a subject from PrjctStdList.do.
+
+        Returns list sorted by ordseq descending (most recent first).
+
+        Raises:
+            ConnectionError: If request fails
+            ValueError: If response cannot be parsed
+        """
+        if year is None or semester is None:
+            year, semester = self.get_current_year_semester()
+
+        try:
+            response = self.session.post(
+                settings.KLAS_TEAM_PROJECT_URL,
+                json={
+                    "selectSubj": subject_code,
+                    "selectYearhakgi": f"{year},{semester}",
+                    "selectChangeYn": "Y",
+                },
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data if isinstance(data, list) else []
+            return sorted(items, key=lambda x: x.get("ordseq", 0), reverse=True)
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch team projects: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse team projects response: {e}")
+
     def get_course_info(self, subject_code: str) -> Dict[str, Any]:
         """
         Get course syllabus info from LectrePlanData.do.

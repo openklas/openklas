@@ -75,3 +75,30 @@ class AllHomeworkResponse(BaseModel):
     success: bool
     courses: List[CourseHomework] = Field(default_factory=list)
     message: Optional[str] = None
+
+
+class TeamProject(BaseModel):
+    ordseq: int
+    weeklyseq: int
+    weeklysubseq: int
+    title: str
+    start_date: Optional[str] = Field(None, alias="startdate")
+    expire_date: Optional[str] = Field(None, alias="expiredate")
+    restart_date: Optional[str] = Field(None, alias="restartdate")
+    reexpire_date: Optional[str] = Field(None, alias="reexpiredate")
+    score: Optional[float] = None
+    isopen: Optional[str] = None
+    indate: Optional[str] = None
+    adddate: Optional[str] = None
+    submit_yn: str = Field(..., alias="submityn")
+    teamseq: Optional[int] = None
+    teamno: Optional[int] = None
+    purpose: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
+
+
+class TeamProjectListResponse(BaseModel):
+    success: bool
+    subject_code: str
+    items: List[TeamProject] = Field(default_factory=list)
