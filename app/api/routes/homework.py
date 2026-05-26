@@ -16,22 +16,10 @@ from app.schemas.homework import (
 )
 from app.core.security import get_session
 from app.services.klas_service import KLASService
+from app.api.deps import get_klas_service
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
-
-
-def get_klas_service(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    token: Optional[str] = Query(None, description="Session token (alternative to Authorization header)"),
-) -> KLASService:
-    raw_token = token or (credentials.credentials if credentials else None)
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    session_data = get_session(raw_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return session_data["klas"]
 
 
 @router.get("/all", response_model=AllHomeworkResponse)

@@ -19,6 +19,7 @@ from app.schemas.workflow import (
 )
 from app.services.klas_service import KLASService
 from app.services.summarize_service import get_summarize_status
+from app.api.deps import get_session_data
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -26,17 +27,10 @@ security = HTTPBearer(auto_error=False)
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _get_klas_and_student(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    token: Optional[str] = Query(None, description="Session token"),
+async def _get_klas_and_student(
+    session: dict = Depends(get_session_data),
 ) -> tuple[KLASService, str]:
-    raw_token = token or (credentials.credentials if credentials else None)
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    session_data = get_session(raw_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return session_data["klas"], session_data["student_id"]
+    return session["klas"], session["student_id"]
 
 
 @router.get("/summary", response_model=WorkflowSummary)

@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Annotated, Optional
-from fastapi import Depends, HTTPException, status, Request
+from typing import Annotated, Optional, TYPE_CHECKING
+from fastapi import Depends, HTTPException, Query, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +12,9 @@ from app.core.security import decode_access_token, get_session, create_session
 from app.core.encryption import decrypt
 from app.core.session_store import get_session_store
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from app.services.klas_service import KLASService
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +163,40 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Admin access required",
         )
     return current_user
+
+
+async def get_klas_service(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer_optional),
+    token: Optional[str] = Query(None, description="Session token (alternative to Authorization header)"),
+    db: AsyncSession = Depends(get_db),
+) -> "KLASService":
+    raw_token = token or (credentials.credentials if credentials else None)
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    session_data = get_session(raw_token)
+    if not session_data:
+        await _resolve_oauth_token(raw_token, db)
+        session_data = get_session(raw_token)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return session_data["klas"]
+
+
+async def get_session_data(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer_optional),
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    raw_token = token or (credentials.credentials if credentials else None)
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    session_data = get_session(raw_token)
+    if not session_data:
+        await _resolve_oauth_token(raw_token, db)
+        session_data = get_session(raw_token)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return session_data
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
