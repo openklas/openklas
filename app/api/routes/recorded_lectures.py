@@ -6,7 +6,6 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from app.core.security import get_session
 from app.services.klas_service import KLASService
 from app.schemas.recorded_lecture import (
     RecordedLectureItem,
@@ -34,7 +33,6 @@ from app.services.progress_service import (
     get_autocomplete_status, start_autocomplete_background,
     CERTI_URL, _JSON_HEADERS,
 )
-from app.core.security import get_session as _get_session
 from app.api.deps import get_klas_service, get_session_data
 
 router = APIRouter()

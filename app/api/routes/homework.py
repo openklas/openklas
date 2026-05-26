@@ -14,7 +14,6 @@ from app.schemas.homework import (
     HomeworkDetailResponse, HomeworkDetail,
     HomeworkFilesResponse, HomeworkFile,
 )
-from app.core.security import get_session
 from app.services.klas_service import KLASService
 from app.api.deps import get_klas_service
 

@@ -14,7 +14,6 @@ from app.schemas.profile import (
     ProfileSettingsResponse,
     ProfileSettingsUpdate,
 )
-from app.core.security import get_session
 from app.services.klas_service import KLASService
 from app.api.deps import get_current_user_from_klas_session, get_klas_service, DbSession
 

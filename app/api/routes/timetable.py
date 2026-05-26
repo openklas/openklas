@@ -9,9 +9,8 @@ from typing import Optional
 from app.schemas.timetable import TimetableResponse
 from app.schemas.session import SessionInfo
 from app.schemas.university_schedule import UniversityScheduleItem, UniversityScheduleResponse
-from app.core.security import get_session
 from app.services.klas_service import KLASService
-from app.api.deps import get_klas_service
+from app.api.deps import get_klas_service, get_session_data
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -97,30 +96,21 @@ async def get_university_schedule(
 
 
 @router.get("/session/info", response_model=SessionInfo)
-async def get_session_info(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_session_info(session: dict = Depends(get_session_data)):
     """
     Get information about your current session
-    
+
     Requires: Bearer token in Authorization header
     """
-    token = credentials.credentials
-    
-    session_data = get_session(token)
-    if not session_data:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired token"
-        )
-    
-    expires_at = session_data['expires_at']
+    expires_at = session['expires_at']
     now = datetime.now()
     time_remaining = max(timedelta(0), expires_at - now)
 
     from app.core.config import settings as _cfg
-    created_at = session_data.get('created_at') or (expires_at - timedelta(hours=_cfg.SESSION_EXPIRE_HOURS))
+    created_at = session.get('created_at') or (expires_at - timedelta(hours=_cfg.SESSION_EXPIRE_HOURS))
 
     return SessionInfo(
-        student_id=session_data['student_id'],
+        student_id=session['student_id'],
         created_at=created_at.isoformat(),
         expires_at=expires_at.isoformat(),
         time_remaining=str(time_remaining)

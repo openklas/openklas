@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DbSession, get_klas_service
 from app.core.config import settings
-from app.core.security import get_session
 from app.models.lecture import LectureMaterial
 from app.schemas.lecture import (
     LectureListResponse, LectureMaterialItem,
