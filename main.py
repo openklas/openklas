@@ -3,9 +3,11 @@ KLAS API - Main application entry point
 """
 import logging
 
-from fastapi import FastAPI
+from typing import Optional
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi_mcp import AuthConfig, FastApiMCP
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -61,13 +63,37 @@ app.include_router(recorded_lectures.router, prefix="/api/recorded-lectures", ta
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG"])
 app.include_router(workflow.router, prefix="/api/workflow", tags=["Workflow"])
 
-# Mount MCP server — exclude legacy endpoints to avoid confusion
+_mcp_bearer = HTTPBearer(auto_error=False)
+
+
+async def _require_mcp_auth(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_mcp_bearer),
+):
+    """Guard the /mcp endpoint — raises 401 so Claude triggers the OAuth flow."""
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+# Mount MCP server — auth guard triggers Claude's OAuth connector flow;
+# OAuth and legacy login routes are excluded from the tool list.
 mcp = FastApiMCP(
     app,
     exclude_operations=[
-        "login_api_auth_login__post",   # old /login_ (username-based)
-        "logout_api_auth_logout__post", # old /logout_
+        "login_api_auth_login__post",
+        "logout_api_auth_logout__post",
+        "oauth_metadata",
+        "register_client_oauth_register_post",
+        "authorize_form_oauth_authorize_get",
+        "authorize_submit_oauth_authorize_post",
+        "token_exchange_oauth_token_post",
     ],
+    auth_config=AuthConfig(
+        dependencies=[Depends(_require_mcp_auth)],
+    ),
 )
 mcp.mount()
 
