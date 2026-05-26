@@ -42,49 +42,202 @@ _LOGIN_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KLAS 로그인</title>
+  <title>Connect OpenKLAS MCP</title>
   <style>
-    *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}}
-    .card{{background:#fff;border-radius:16px;padding:44px 40px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.10)}}
-    .logo{{text-align:center;font-size:22px;font-weight:700;color:#1a1a2e;margin-bottom:4px}}
-    .sub{{text-align:center;color:#888;font-size:13px;margin-bottom:28px}}
-    label{{display:block;font-size:13px;font-weight:500;color:#555;margin-bottom:5px}}
-    .field{{margin-bottom:16px}}
-    input[type=text],input[type=password]{{width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none;transition:border-color .2s}}
-    input:focus{{border-color:#6366f1}}
-    .error{{background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}}
-    button{{width:100%;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px;transition:background .2s}}
-    button:hover{{background:#4f46e5}}
-    button:disabled{{background:#a5b4fc;cursor:not-allowed}}
-    .notice{{margin-top:20px;font-size:12px;color:#aaa;text-align:center;line-height:1.7}}
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f3f4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }}
+    .card {{
+      background: #fff;
+      border-radius: 12px;
+      padding: 40px 36px 32px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.10);
+    }}
+    .brand {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }}
+    .brand-icon {{
+      width: 36px;
+      height: 36px;
+      background: #1a1a2e;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 18px;
+      flex-shrink: 0;
+    }}
+    .brand-name {{
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }}
+    h1 {{
+      text-align: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 6px;
+    }}
+    .subtitle {{
+      text-align: center;
+      font-size: 13.5px;
+      color: #555;
+      margin-bottom: 24px;
+    }}
+    .subtitle b {{ color: #111; font-weight: 600; }}
+    .error {{
+      background: #fff0f0;
+      border: 1px solid #fca5a5;
+      color: #c0392b;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }}
+    .field {{ margin-bottom: 14px; }}
+    label {{
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #444;
+      margin-bottom: 5px;
+    }}
+    input[type=text], input[type=password] {{
+      width: 100%;
+      padding: 10px 13px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #111;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      background: #fff;
+    }}
+    input:focus {{
+      border-color: #4f6ef7;
+      box-shadow: 0 0 0 3px rgba(79,110,247,.12);
+    }}
+    .permissions {{
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 20px 0 22px;
+    }}
+    .permissions-title {{
+      font-size: 12.5px;
+      color: #555;
+      margin-bottom: 10px;
+    }}
+    .permissions-title b {{ color: #111; font-weight: 600; }}
+    .perm-item {{
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      font-size: 13px;
+      color: #374151;
+      margin-bottom: 7px;
+    }}
+    .perm-item:last-child {{ margin-bottom: 0; }}
+    .check {{
+      color: #4f6ef7;
+      font-size: 13px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }}
+    .btn-connect {{
+      width: 100%;
+      padding: 11px;
+      background: #4f6ef7;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      margin-bottom: 8px;
+    }}
+    .btn-connect:hover {{ background: #3b5ce4; }}
+    .btn-connect:disabled {{ background: #a5b4fc; cursor: not-allowed; }}
+    .btn-cancel {{
+      width: 100%;
+      padding: 11px;
+      background: #fff;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+      margin-bottom: 0;
+    }}
+    .btn-cancel:hover {{ background: #f9fafb; }}
+    .footer {{
+      text-align: center;
+      margin-top: 18px;
+      font-size: 12px;
+      color: #9ca3af;
+    }}
+    .footer a {{ color: #9ca3af; text-decoration: none; }}
+    .footer a:hover {{ text-decoration: underline; }}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">OpenKLAS</div>
-    <div class="sub">AI 어시스턴트에 KLAS를 연결합니다</div>
+    <div class="brand">
+      <div class="brand-icon">🎓</div>
+      <span class="brand-name">OpenKLAS MCP</span>
+    </div>
+    <h1>Connect with OpenKLAS MCP</h1>
+    <p class="subtitle">Grant <b>Claude</b> access to your KLAS account</p>
+
     {error_html}
-    <form method="POST" action="/oauth/authorize" onsubmit="this.querySelector('button').disabled=true">
+
+    <form method="POST" action="/oauth/authorize" onsubmit="this.querySelector('.btn-connect').disabled=true">
       <input type="hidden" name="client_id" value="{client_id}">
       <input type="hidden" name="redirect_uri" value="{redirect_uri}">
       <input type="hidden" name="state" value="{state}">
       <input type="hidden" name="code_challenge" value="{code_challenge}">
       <input type="hidden" name="code_challenge_method" value="{code_challenge_method}">
       <div class="field">
-        <label>학번 / Student ID</label>
+        <label>Student ID (학번)</label>
         <input type="text" name="student_id" placeholder="20XXXXXXXXXX" required autofocus autocomplete="username">
       </div>
       <div class="field">
-        <label>비밀번호 / Password</label>
+        <label>Password (비밀번호)</label>
         <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
       </div>
-      <button type="submit">로그인 / Login</button>
+
+      <div class="permissions">
+        <p class="permissions-title">Through OpenKLAS MCP, <b>Claude</b> will be able to:</p>
+        <div class="perm-item"><span class="check">✓</span> View your timetable and course schedule</div>
+        <div class="perm-item"><span class="check">✓</span> Access homework assignments and deadlines</div>
+        <div class="perm-item"><span class="check">✓</span> Watch recorded lectures on your behalf</div>
+        <div class="perm-item"><span class="check">✓</span> Read your academic profile</div>
+      </div>
+
+      <button type="submit" class="btn-connect">Connect</button>
+      <button type="button" class="btn-cancel" onclick="window.close()">Cancel</button>
     </form>
-    <p class="notice">
-      자격증명은 AES-256으로 암호화되어 저장됩니다.<br>
-      Credentials are stored encrypted for automatic session refresh.<br>
-      Your data is never shared with third parties.
+
+    <p class="footer">
+      Your credentials are encrypted end-to-end and never shared.
     </p>
   </div>
 </body>
