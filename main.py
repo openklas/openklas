@@ -95,7 +95,7 @@ mcp = FastApiMCP(
         dependencies=[Depends(_require_mcp_auth)],
     ),
 )
-mcp.mount()
+mcp.mount_sse(mount_path="/mcp")
 
 
 @app.get("/")
