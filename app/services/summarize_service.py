@@ -261,6 +261,8 @@ async def _run_pipeline(
     week_no: Optional[int],
     student_id: str,
     password: str,
+    user_id: Optional[str] = None,
+    subject_code: Optional[str] = None,
 ) -> None:
     s = _ensure_status(student_id)
     s.running = True
@@ -299,10 +301,28 @@ async def _run_pipeline(
         summary = _summarize(transcript, lecture_title, course_title)
         s.summary = summary
 
-        # 4. Save to Obsidian
+        # 4. Save to Obsidian (no-op when OBSIDIAN_COURSES_PATH unset)
         s.step = "saving"
         obsidian_path = save_to_obsidian(summary, transcript, course_title, lecture_title, week_no)
         s.obsidian_path = obsidian_path
+
+        # 5. Persist to RAG DB for future cache hits
+        if user_id and subject_code:
+            try:
+                import uuid as _uuid
+                from app.db.session import AsyncSessionLocal
+                from app.services.rag_service import ingest_text
+                async with AsyncSessionLocal() as db:
+                    await ingest_text(
+                        db=db,
+                        user_id=_uuid.UUID(user_id),
+                        filename=f"recorded:{subject_code}:{oid}",
+                        text=summary,
+                        subject_code=subject_code,
+                    )
+                logger.info("Persisted recorded lecture summary to RAG: %s/%s", subject_code, oid)
+            except Exception as rag_err:
+                logger.warning("RAG ingest failed (non-fatal): %s", rag_err)
 
         s.step = "done"
 
@@ -325,10 +345,15 @@ def start_summarize_background(
     week_no: Optional[int],
     student_id: str,
     password: str,
+    user_id: Optional[str] = None,
+    subject_code: Optional[str] = None,
 ) -> None:
     """Entry point for FastAPI BackgroundTasks. Runs the async pipeline synchronously."""
     asyncio.run(
-        _run_pipeline(starting_url, oid, lecture_title, course_title, week_no, student_id, password)
+        _run_pipeline(
+            starting_url, oid, lecture_title, course_title, week_no,
+            student_id, password, user_id, subject_code,
+        )
     )
 
 

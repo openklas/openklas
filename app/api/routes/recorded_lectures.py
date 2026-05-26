@@ -33,7 +33,8 @@ from app.services.progress_service import (
     get_autocomplete_status, start_autocomplete_background,
     CERTI_URL, _JSON_HEADERS,
 )
-from app.api.deps import get_klas_service, get_session_data
+from app.api.deps import get_klas_service, get_session_data, CurrentUserFromKlas, DbSession
+from app.services.rag_service import find_document, get_document_text, ingest_text
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -196,25 +197,26 @@ async def summarize_recorded_lecture(
     oid: str = Query(..., description="Lecture oid from the recorded lecture list"),
     year: Optional[int] = Query(None),
     semester: Optional[str] = Query(None),
-    force: bool = Query(False, description="Override a stuck/stale summarize job"),
+    force: bool = Query(False, description="Re-summarize even if a cached summary exists"),
     session: dict = Depends(get_session_data),
+    user: CurrentUserFromKlas = Depends(),
+    db: DbSession = None,
 ):
     """
     Start the video summarization pipeline for a single recorded lecture in the background.
 
-    Steps: download MP4 → transcribe (faster-whisper) → summarize (Claude) → save to Obsidian.
-    Returns immediately. Check progress at `GET /summarize/status`.
+    If a summary was generated before it is returned immediately from cache (no re-processing).
+    Pass force=true to re-summarize. Steps: download MP4 → transcribe → summarize (Claude).
+    Returns immediately. Check progress at GET /summarize/status.
 
-    Get `subject_code` and `oid` from `GET /api/recorded-lectures/all`.
-
-    Requires: Bearer token in Authorization header
+    Get subject_code and oid from GET /api/recorded-lectures/all.
     """
     klas = session["klas"]
     student_id = session["student_id"]
     password = session.get("password", "")
 
-    status = get_summarize_status(student_id)
-    if status.running and not force:
+    job_status = get_summarize_status(student_id)
+    if job_status.running and not force:
         raise HTTPException(
             status_code=409,
             detail="A summarize job is already running. Check /summarize/status or pass force=true.",
@@ -224,12 +226,10 @@ async def summarize_recorded_lecture(
         if year is None or semester is None:
             year, semester = klas.get_current_year_semester()
 
-        # Resolve course title from timetable
         timetable_data = klas.get_timetable(year, semester)
         courses = klas.parse_timetable(timetable_data)
         course_title = courses.get(subject_code, {}).get("course_title", subject_code)
 
-        # Find the specific lecture
         items = klas.get_recorded_lectures(subject_code, year, semester)
         lecture = next((i for i in items if i.get("oid") == oid), None)
         if not lecture:
@@ -242,9 +242,29 @@ async def summarize_recorded_lecture(
         title = lecture.get("sbjt", oid)
         week_no = lecture.get("weekNo")
 
+        # Cache check — skip expensive pipeline if summary already exists
+        if not force:
+            cached_doc = await find_document(db, user.id, f"recorded:{subject_code}:{oid}", subject_code)
+            if cached_doc:
+                cached_summary = await get_document_text(db, cached_doc)
+                s = get_summarize_status(student_id)
+                s.running = False
+                s.oid = oid
+                s.title = title
+                s.summary = cached_summary
+                s.step = "done"
+                s.error = None
+                return SummarizeJobResponse(
+                    success=True,
+                    oid=oid,
+                    title=title,
+                    message="Cached summary loaded from previous run. Check /summarize/status for the full summary.",
+                )
+
         background_tasks.add_task(
             start_summarize_background,
             starting, oid, title, course_title, week_no, student_id, password,
+            str(user.id), subject_code,
         )
         return SummarizeJobResponse(
             success=True,

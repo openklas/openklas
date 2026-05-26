@@ -11,8 +11,9 @@ import pdfplumber
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DbSession, get_klas_service
+from app.api.deps import DbSession, get_klas_service, CurrentUserFromKlas
 from app.core.config import settings
+from app.services.rag_service import find_document, get_document_text, ingest_text
 from app.models.lecture import LectureMaterial
 from app.schemas.lecture import (
     LectureListResponse, LectureMaterialItem,
@@ -150,11 +151,13 @@ async def ask_about_lecture(
     board_no: int = Path(..., description="boardNo from lecture list"),
     question: str = Query(..., description="Question to ask about this lecture"),
     klas: KLASService = Depends(get_klas_service),
+    user: CurrentUserFromKlas = Depends(),
     db: DbSession = None,
 ):
     """
     Ask Claude a question about a lecture post. Reads text from DB (no re-download).
     All PDF files from the same post are combined and cached together.
+    The Q&A is saved to the RAG store for future memory queries.
 
     Requires: Bearer token in Authorization header
     """
@@ -174,6 +177,8 @@ async def ask_about_lecture(
         raise HTTPException(status_code=422, detail="No extractable text found for this lecture.")
 
     post_title = materials[0].post_title
+    subject_name = materials[0].subject_name
+    subject_code = materials[0].subject_code
     try:
         client = anthropic_sdk.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         with client.messages.stream(
@@ -197,10 +202,19 @@ async def ask_about_lecture(
 
         answer = next((b.text for b in message.content if b.type == "text"), "")
 
-        subject_name = materials[0].subject_name
         note_content = f"# {post_title}\n\n**Subject:** {subject_name}\n\n## Q: {question}\n\n{answer}\n"
-        obsidian_path = _save_to_obsidian(subject_name, post_title, note_content)
-        logger.info("Saved lecture Q&A to %s", obsidian_path)
+        _save_to_obsidian(subject_name, post_title, note_content)
+
+        try:
+            await ingest_text(
+                db=db,
+                user_id=user.id,
+                filename=f"lecture_ask:{board_no}:{question[:80]}",
+                text=note_content,
+                subject_code=subject_code,
+            )
+        except Exception as rag_err:
+            logger.warning("RAG ingest failed for Q&A (non-fatal): %s", rag_err)
 
         return LectureAskResponse(
             success=True,
@@ -220,19 +234,36 @@ async def summarize_subject_lectures(
     subject_code: str = Path(..., description="Subject code from timetable"),
     year: Optional[int] = Query(None),
     semester: Optional[str] = Query(None),
+    force: bool = Query(False, description="Re-summarize even if a cached summary exists"),
     klas: KLASService = Depends(get_klas_service),
+    user: CurrentUserFromKlas = Depends(),
     db: DbSession = None,
 ):
     """
-    Ask Claude to generate a full study summary for all lectures in a subject.
+    Generate a comprehensive study summary for all lectures in a subject.
 
-    Reads all stored lecture texts from DB, sends to Claude with prompt caching.
-    Best used after running /sync.
+    Returns cached summary instantly if one exists from a previous run.
+    Pass force=true to regenerate. Best used after running /sync.
 
     Requires: Bearer token in Authorization header
     """
     if year is None or semester is None:
         year, semester = klas.get_current_year_semester()
+
+    doc_key = f"subject_summary:{subject_code}:{year}:{semester}"
+
+    if not force:
+        cached_doc = await find_document(db, user.id, doc_key, subject_code)
+        if cached_doc:
+            cached_summary = await get_document_text(db, cached_doc)
+            return {
+                "success": True,
+                "subject_code": subject_code,
+                "subject_name": subject_code,
+                "lecture_count": None,
+                "summary": cached_summary,
+                "cached": True,
+            }
 
     result = await db.execute(
         select(LectureMaterial)
@@ -282,8 +313,19 @@ async def summarize_subject_lectures(
         summary = next((b.text for b in message.content if b.type == "text"), "")
 
         note_content = f"# {subject_name} - Study Summary\n\n{summary}\n"
-        obsidian_path = _save_to_obsidian(subject_name, "Full Summary", note_content)
-        logger.info("Saved lecture summary to %s", obsidian_path)
+        _save_to_obsidian(subject_name, "Full Summary", note_content)
+
+        # Delete old cached version if force=True, then save fresh
+        if force:
+            old = await find_document(db, user.id, doc_key, subject_code)
+            if old:
+                await db.delete(old)
+                await db.commit()
+
+        try:
+            await ingest_text(db=db, user_id=user.id, filename=doc_key, text=note_content, subject_code=subject_code)
+        except Exception as rag_err:
+            logger.warning("RAG ingest failed for subject summary (non-fatal): %s", rag_err)
 
         return {
             "success": True,
@@ -291,7 +333,7 @@ async def summarize_subject_lectures(
             "subject_name": subject_name,
             "lecture_count": len(materials),
             "summary": summary,
-            "obsidian_path": obsidian_path,
+            "cached": False,
         }
     except anthropic_sdk.APIError as e:
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")

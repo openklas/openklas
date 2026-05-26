@@ -166,6 +166,58 @@ async def query_rag(
     return response.content[0].text
 
 
+async def ingest_text(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    filename: str,
+    text: str,
+    subject_code: str | None = None,
+) -> Document:
+    """Chunk, embed, and store plain text as a searchable RAG document."""
+    svc = EmbeddingService.get()
+    chunks = _semantic_chunks(text)
+    if not chunks:
+        chunks = [text[:MAX_CHUNK_SIZE]] if text.strip() else []
+    if not chunks:
+        raise ValueError("No text content to ingest.")
+    embeddings = svc.embed(chunks, input_type="document")
+    doc = Document(user_id=user_id, filename=filename, subject_code=subject_code, total_chunks=len(chunks))
+    db.add(doc)
+    await db.flush()
+    for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        db.add(DocumentChunk(
+            document_id=doc.id, user_id=user_id,
+            content=chunk, embedding=embedding, chunk_index=idx,
+        ))
+    await db.commit()
+    await db.refresh(doc)
+    return doc
+
+
+async def find_document(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    filename: str,
+    subject_code: str | None = None,
+) -> Document | None:
+    """Return an existing document by user + filename (+ optional subject_code), or None."""
+    stmt = select(Document).where(Document.user_id == user_id, Document.filename == filename)
+    if subject_code:
+        stmt = stmt.where(Document.subject_code == subject_code)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_document_text(db: AsyncSession, document: Document) -> str:
+    """Reconstruct the full text of a document by joining its chunks in order."""
+    result = await db.execute(
+        select(DocumentChunk)
+        .where(DocumentChunk.document_id == document.id)
+        .order_by(DocumentChunk.chunk_index)
+    )
+    return "\n\n".join(c.content for c in result.scalars().all())
+
+
 async def delete_document(db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID) -> bool:
     result = await db.execute(
         select(Document).where(Document.id == document_id, Document.user_id == user_id)
