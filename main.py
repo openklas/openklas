@@ -32,10 +32,14 @@ if settings.SENTRY_DSN:
     logger.info("Sentry initialized (env=%s)", settings.SENTRY_ENVIRONMENT)
 
 # Create FastAPI app
+_is_prod = settings.ENV.lower() == "prod"
 app = FastAPI(
     title="OpenKLAS API",
     description="API for KLAS integration",
     version="1.0.0",
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
 )
 
 # Rate limiter (slowapi) — wires the limiter instance to the app and registers
