@@ -75,6 +75,8 @@ class WatchJobResponse(BaseModel):
     watching: int
     lectures: List[str] = Field(default_factory=list)
     message: str
+    estimated_seconds: Optional[int] = None
+    status_endpoint: Optional[str] = None
 
 
 class WatchStatusResponse(BaseModel):
@@ -93,6 +95,8 @@ class SummarizeJobResponse(BaseModel):
     oid: str
     title: str
     message: str
+    estimated_seconds: Optional[int] = None
+    status_endpoint: Optional[str] = None
 
 
 class SummarizeStatusResponse(BaseModel):
@@ -112,6 +116,8 @@ class RecordJobResponse(BaseModel):
     success: bool
     title: str
     message: str
+    estimated_seconds: Optional[int] = None
+    status_endpoint: Optional[str] = None
 
 
 class RecordStatusResponse(BaseModel):
@@ -131,6 +137,8 @@ class AutocompleteJobResponse(BaseModel):
     watching: int
     lectures: List[str] = Field(default_factory=list)
     message: str
+    estimated_seconds: Optional[int] = None
+    status_endpoint: Optional[str] = None
 
 
 class AutocompleteStatusResponse(BaseModel):

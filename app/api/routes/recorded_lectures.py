@@ -1,6 +1,6 @@
 """Recorded lecture endpoints"""
 import logging
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Depends, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Depends, Query, Request, UploadFile, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
@@ -41,7 +41,7 @@ router = APIRouter()
 security = HTTPBearer(auto_error=False)
 
 
-@router.post("/watch", response_model=WatchJobResponse)
+@router.post("/watch", response_model=WatchJobResponse, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/minute")
 async def watch_lecture(
     request: Request,
@@ -90,7 +90,13 @@ async def watch_lecture(
             success=True,
             watching=1,
             lectures=[payload["title"]],
-            message=f"Watching '{payload['title']}' in the background (~{total_min} min).",
+            message=(
+                f"Auto-watching '{payload['title']}' in the background. Expected duration: ~{total_min} minutes "
+                "(plays at 2x in a headless browser). Call watch_status to check progress — feel free to move "
+                "on to other tasks while it runs."
+            ),
+            estimated_seconds=int(total_min * 30),
+            status_endpoint="/api/recorded-lectures/watch/status",
         )
     except HTTPException:
         raise
@@ -193,7 +199,7 @@ async def list_all_recorded_lectures(
         raise HTTPException(status_code=500, detail=f"Error fetching recorded lectures: {str(e)}")
 
 
-@router.post("/summarize", response_model=SummarizeJobResponse, operation_id="summarize_recorded_lecture")
+@router.post("/summarize", response_model=SummarizeJobResponse, operation_id="summarize_recorded_lecture", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("3/minute")
 async def summarize_recorded_lecture(
     request: Request,
@@ -263,7 +269,12 @@ async def summarize_recorded_lecture(
                     success=True,
                     oid=oid,
                     title=title,
-                    message="Cached summary loaded from previous run. Check /summarize/status for the full summary.",
+                    message=(
+                        f"Cached summary for '{title}' loaded from a previous run — no re-processing needed. "
+                        "Call summarize_status to read the full summary, or pass force=true to regenerate."
+                    ),
+                    estimated_seconds=0,
+                    status_endpoint="/api/recorded-lectures/summarize/status",
                 )
 
         background_tasks.add_task(
@@ -275,7 +286,14 @@ async def summarize_recorded_lecture(
             success=True,
             oid=oid,
             title=title,
-            message=f"Summarize pipeline started for '{title}'. Check /summarize/status for progress.",
+            message=(
+                f"Summarization started for '{title}'. This typically takes 5–10 minutes depending on "
+                "video length (download → transcribe → summarize). It runs in the background — call "
+                "summarize_status to check progress, or move on to other tasks. Results will also be "
+                "saved to Obsidian if configured."
+            ),
+            estimated_seconds=600,
+            status_endpoint="/api/recorded-lectures/summarize/status",
         )
     except HTTPException:
         raise
@@ -309,7 +327,7 @@ async def summarize_status(session: dict = Depends(get_session_data)):
     )
 
 
-@router.post("/autocomplete", response_model=AutocompleteJobResponse, operation_id="autocomplete_lecture")
+@router.post("/autocomplete", response_model=AutocompleteJobResponse, operation_id="autocomplete_lecture", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("3/minute")
 async def autocomplete_lecture(
     request: Request,
@@ -338,8 +356,8 @@ async def autocomplete_lecture(
     klas = session["klas"]
     student_id = session["student_id"]
 
-    status = get_autocomplete_status(student_id)
-    if status.running and not force:
+    job_status = get_autocomplete_status(student_id)
+    if job_status.running and not force:
         raise HTTPException(
             status_code=409,
             detail="An autocomplete job is already running. Check /autocomplete/status or pass force=true.",
@@ -363,7 +381,13 @@ async def autocomplete_lecture(
             success=True,
             watching=1,
             lectures=[title],
-            message=f"Autocomplete started for '{title}'. Check /autocomplete/status for progress.",
+            message=(
+                f"Autocomplete started for '{title}'. This typically takes 1–3 minutes per lecture "
+                "(directly calls the KLAS progress API, no video playback). Call autocomplete_status "
+                "to check progress."
+            ),
+            estimated_seconds=180,
+            status_endpoint="/api/recorded-lectures/autocomplete/status",
         )
     except HTTPException:
         raise
@@ -373,7 +397,7 @@ async def autocomplete_lecture(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/autocomplete/all", response_model=AutocompleteJobResponse, operation_id="autocomplete_all_lectures")
+@router.post("/autocomplete/all", response_model=AutocompleteJobResponse, operation_id="autocomplete_all_lectures", status_code=status.HTTP_202_ACCEPTED)
 async def autocomplete_all_lectures(
     background_tasks: BackgroundTasks,
     year: Optional[int] = Query(None),
@@ -393,8 +417,8 @@ async def autocomplete_all_lectures(
     klas = session["klas"]
     student_id = session["student_id"]
 
-    status = get_autocomplete_status(student_id)
-    if status.running and not force:
+    job_status = get_autocomplete_status(student_id)
+    if job_status.running and not force:
         raise HTTPException(
             status_code=409,
             detail="An autocomplete job is already running. Check /autocomplete/status.",
@@ -422,7 +446,9 @@ async def autocomplete_all_lectures(
                 success=True,
                 watching=0,
                 lectures=[],
-                message="All lectures are already complete.",
+                message="All lectures are already complete — nothing to do.",
+                estimated_seconds=0,
+                status_endpoint="/api/recorded-lectures/autocomplete/status",
             )
 
         titles = [r.get("sbjt", r.get("oid", "?")) for r in incomplete]
@@ -430,11 +456,18 @@ async def autocomplete_all_lectures(
             start_autocomplete_background,
             klas, incomplete, str(year), semester, student_id, delay,
         )
+        n = len(incomplete)
         return AutocompleteJobResponse(
             success=True,
-            watching=len(incomplete),
+            watching=n,
             lectures=titles,
-            message=f"Autocomplete started for {len(incomplete)} lecture(s). Check /autocomplete/status.",
+            message=(
+                f"Autocomplete started for {n} lecture(s) across all subjects. "
+                f"Expected to take roughly {n * 2}–{n * 4} minutes (runs sequentially in the background). "
+                "Call autocomplete_status to check progress, or move on to other tasks."
+            ),
+            estimated_seconds=n * 180,
+            status_endpoint="/api/recorded-lectures/autocomplete/status",
         )
     except HTTPException:
         raise
@@ -797,7 +830,7 @@ async def certi_bypass_otp(
     )
 
 
-@router.post("/record", response_model=RecordJobResponse)
+@router.post("/record", response_model=RecordJobResponse, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("3/minute")
 async def record_lecture(
     request: Request,
@@ -820,8 +853,8 @@ async def record_lecture(
     Requires: Bearer token in Authorization header (KLAS session).
     """
     student_id = session["student_id"]
-    status = get_record_status(student_id)
-    if status.running and not force:
+    job_status = get_record_status(student_id)
+    if job_status.running and not force:
         raise HTTPException(
             status_code=409,
             detail="A record job is already running. Check /record/status or pass force=true.",
@@ -841,7 +874,13 @@ async def record_lecture(
     return RecordJobResponse(
         success=True,
         title=lecture_title,
-        message=f"Recording pipeline started for '{lecture_title}' ({course_title}). Poll /record/status for progress.",
+        message=(
+            f"Recording pipeline started for '{lecture_title}' ({course_title}). This typically takes "
+            "3–8 minutes (transcribe → summarize → save). It runs in the background — call record_status "
+            "to check progress, or continue with other tasks while it processes."
+        ),
+        estimated_seconds=480,
+        status_endpoint="/api/recorded-lectures/record/status",
     )
 
 
