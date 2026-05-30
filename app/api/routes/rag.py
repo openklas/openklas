@@ -3,10 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import limiter
 from app.models.document import Document
 from app.schemas.rag import DocumentResponse, IngestResponse, QueryRequest, QueryResponse
 from app.services.rag_service import delete_document, ingest_pdf, query_rag
@@ -18,7 +19,9 @@ _MAX_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 @router.post("/ingest", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def ingest(
+    request: Request,
     current_user: CurrentUser,
     db: DbSession,
     file: UploadFile = File(...),
@@ -72,7 +75,8 @@ async def remove_document(document_id: uuid.UUID, current_user: CurrentUser, db:
 
 
 @router.post("/query", response_model=QueryResponse)
-async def query(body: QueryRequest, current_user: CurrentUser, db: DbSession):
+@limiter.limit("20/minute")
+async def query(request: Request, body: QueryRequest, current_user: CurrentUser, db: DbSession):
     """Ask a question against your ingested lecture materials."""
     answer = await query_rag(
         db=db,

@@ -37,7 +37,7 @@ if settings.SENTRY_DSN:
 _is_prod = settings.ENV.lower() == "prod"
 app = FastAPI(
     title="OpenKLAS API",
-    description="API for KLAS integration",
+    description="Open-source FastAPI backend for KLAS with built-in MCP support",
     version="1.0.0",
     docs_url=None if _is_prod else "/docs",
     redoc_url=None if _is_prod else "/redoc",

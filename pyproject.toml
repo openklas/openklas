@@ -1,7 +1,7 @@
 [project]
-name = "backend"
+name = "openklas"
 version = "0.1.0"
-description = "Fittable API"
+description = "Open-source FastAPI backend for KLAS with built-in MCP support"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

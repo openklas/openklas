@@ -1,6 +1,6 @@
 """Recorded lecture endpoints"""
 import logging
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Depends, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Depends, Query, Request, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
@@ -34,6 +34,7 @@ from app.services.progress_service import (
     CERTI_URL, _JSON_HEADERS,
 )
 from app.api.deps import get_klas_service, get_session_data, CurrentUserFromKlas, DbSession
+from app.core.rate_limit import limiter
 from app.services.rag_service import find_document, get_document_text, ingest_text
 
 router = APIRouter()
@@ -41,7 +42,9 @@ security = HTTPBearer(auto_error=False)
 
 
 @router.post("/watch", response_model=WatchJobResponse)
+@limiter.limit("5/minute")
 async def watch_lecture(
+    request: Request,
     background_tasks: BackgroundTasks,
     subject_code: str = Query(..., description="Subject code from timetable"),
     oid: str = Query(..., description="Lecture oid from the recorded lecture list"),
@@ -191,7 +194,9 @@ async def list_all_recorded_lectures(
 
 
 @router.post("/summarize", response_model=SummarizeJobResponse, operation_id="summarize_recorded_lecture")
+@limiter.limit("3/minute")
 async def summarize_recorded_lecture(
+    request: Request,
     background_tasks: BackgroundTasks,
     subject_code: str = Query(..., description="Subject code (e.g. U202610846I030014)"),
     oid: str = Query(..., description="Lecture oid from the recorded lecture list"),
@@ -305,7 +310,9 @@ async def summarize_status(session: dict = Depends(get_session_data)):
 
 
 @router.post("/autocomplete", response_model=AutocompleteJobResponse, operation_id="autocomplete_lecture")
+@limiter.limit("3/minute")
 async def autocomplete_lecture(
+    request: Request,
     background_tasks: BackgroundTasks,
     subject_code: str = Query(..., description="Subject code from timetable"),
     oid: str = Query(..., description="Lecture oid from the recorded lecture list"),
@@ -791,7 +798,9 @@ async def certi_bypass_otp(
 
 
 @router.post("/record", response_model=RecordJobResponse)
+@limiter.limit("3/minute")
 async def record_lecture(
+    request: Request,
     background_tasks: BackgroundTasks,
     audio: UploadFile = File(..., description="Audio file recorded by the client (webm, ogg, mp3, wav, m4a)"),
     lecture_title: str = Query(..., description="Human-readable name for this recording"),

@@ -7,9 +7,9 @@ class Settings(BaseSettings):
 
     # API Settings
     API_STR: str = "/api"
-    PROJECT_NAME: str = "Fittable API"
+    PROJECT_NAME: str = "OpenKLAS API"
     VERSION: str = "1.0.0"
-    DESCRIPTION: str = "API for Fittable"
+    DESCRIPTION: str = "Open-source FastAPI backend for KLAS with built-in MCP support"
 
     # Environment — controls CORS, debug behavior, etc. Set ENV=prod in production .env.
     ENV: str = "dev"
@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # CORS — production origins only. Dev localhost origins are appended automatically
     # when ENV != "prod" (see `cors_origins` property below).
     BACKEND_CORS_ORIGINS: List[str] = [
-        "https://fittable-frontend.vercel.app",
-        "https://fittable.vercel.app",
+        "https://openklas.com",
+        "https://www.openklas.com",
     ]
 
     @property
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # Server Settings
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    RELOAD: bool = True
+    RELOAD: bool = False
 
     # Google Calendar Settings
     GOOGLE_SERVICE_ACCOUNT_FILE: str = "g-calendar.json"
