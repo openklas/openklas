@@ -284,6 +284,8 @@ async def oauth_metadata(request: Request):
         "token_endpoint_auth_methods_supported": ["client_secret_post", "none"],
         "scopes_supported": ["klas"],
         "code_challenge_methods_supported": ["S256"],
+        "logo_uri": f"{base}/logo.png",
+        "service_documentation": "https://github.com/openklas/openklas",
     }
 
 

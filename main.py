@@ -3,9 +3,11 @@ KLAS API - Main application entry point
 """
 import logging
 
+from pathlib import Path
 from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi_mcp import AuthConfig, FastApiMCP
 from slowapi import _rate_limit_exceeded_handler
@@ -100,6 +102,12 @@ mcp = FastApiMCP(
     ),
 )
 mcp.mount_sse(mount_path="/mcp")
+
+
+@app.get("/logo.png", include_in_schema=False)
+async def logo():
+    path = Path(__file__).parent / "assets" / "logo.png"
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/")
