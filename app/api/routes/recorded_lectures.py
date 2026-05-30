@@ -1,8 +1,12 @@
 """Recorded lecture endpoints"""
+import asyncio
+import json
 import logging
+from typing import Callable, Optional
+
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Depends, Query, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,33 @@ from app.services.rag_service import find_document, get_document_text, ingest_te
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
+
+
+async def _sse_stream(get_state: Callable[[], dict], poll_interval: float = 1.0):
+    """Yield SSE events whenever the state changes; close when running=False.
+
+    `get_state` returns the current job state as a dict (must include `running`).
+    """
+    last_serialized: Optional[str] = None
+    while True:
+        try:
+            current = get_state()
+            serialized = json.dumps(current, default=str)
+            if serialized != last_serialized:
+                yield f"data: {serialized}\n\n"
+                last_serialized = serialized
+            if not current.get("running") and last_serialized is not None:
+                yield "event: close\ndata: {}\n\n"
+                break
+            await asyncio.sleep(poll_interval)
+        except asyncio.CancelledError:
+            break
+
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",   # disable nginx buffering so events arrive live
+}
 
 
 @router.post("/watch", response_model=WatchJobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -124,6 +155,27 @@ async def watch_status(session: dict = Depends(get_session_data)):
         started_at=s.started_at,
         finished_at=s.finished_at,
     )
+
+
+@router.get("/watch/status/stream", include_in_schema=False)
+async def watch_status_stream(session: dict = Depends(get_session_data)):
+    """SSE stream of the watch job status — pushes updates as they happen."""
+    student_id = session["student_id"]
+
+    def snapshot() -> dict:
+        s = get_status(student_id)
+        return {
+            "running": s.running,
+            "total": s.total,
+            "completed": s.completed,
+            "in_progress": s.in_progress,
+            "pending": s.pending,
+            "failed": s.failed,
+            "started_at": s.started_at,
+            "finished_at": s.finished_at,
+        }
+
+    return StreamingResponse(_sse_stream(snapshot), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.get("", response_model=RecordedLectureListResponse)
@@ -327,6 +379,29 @@ async def summarize_status(session: dict = Depends(get_session_data)):
     )
 
 
+@router.get("/summarize/status/stream", include_in_schema=False)
+async def summarize_status_stream(session: dict = Depends(get_session_data)):
+    """SSE stream of the summarize pipeline status — pushes step changes live."""
+    student_id = session["student_id"]
+
+    def snapshot() -> dict:
+        s = get_summarize_status(student_id)
+        return {
+            "running": s.running,
+            "oid": s.oid,
+            "title": s.title,
+            "step": s.step,
+            "transcript": s.transcript,
+            "summary": s.summary,
+            "obsidian_path": s.obsidian_path,
+            "error": s.error,
+            "started_at": s.started_at,
+            "finished_at": s.finished_at,
+        }
+
+    return StreamingResponse(_sse_stream(snapshot), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
 @router.post("/autocomplete", response_model=AutocompleteJobResponse, operation_id="autocomplete_lecture", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("3/minute")
 async def autocomplete_lecture(
@@ -498,6 +573,28 @@ async def autocomplete_status(session: dict = Depends(get_session_data)):
         started_at=s.started_at,
         finished_at=s.finished_at,
     )
+
+
+@router.get("/autocomplete/status/stream", include_in_schema=False)
+async def autocomplete_status_stream(session: dict = Depends(get_session_data)):
+    """SSE stream of autocomplete progress — live updates including current_prog %."""
+    student_id = session["student_id"]
+
+    def snapshot() -> dict:
+        s = get_autocomplete_status(student_id)
+        return {
+            "running": s.running,
+            "total": s.total,
+            "completed": s.completed,
+            "in_progress": s.in_progress,
+            "pending": s.pending,
+            "failed": s.failed,
+            "current_prog": s.current_prog,
+            "started_at": s.started_at,
+            "finished_at": s.finished_at,
+        }
+
+    return StreamingResponse(_sse_stream(snapshot), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.post("/certi/debug", operation_id="certi_debug")
@@ -905,3 +1002,25 @@ async def record_status(session: dict = Depends(get_session_data)):
         started_at=s.started_at,
         finished_at=s.finished_at,
     )
+
+
+@router.get("/record/status/stream", include_in_schema=False)
+async def record_status_stream(session: dict = Depends(get_session_data)):
+    """SSE stream of the record pipeline status — pushes step changes live."""
+    student_id = session["student_id"]
+
+    def snapshot() -> dict:
+        s = get_record_status(student_id)
+        return {
+            "running": s.running,
+            "title": s.title,
+            "step": s.step,
+            "transcript": s.transcript,
+            "summary": s.summary,
+            "obsidian_path": s.obsidian_path,
+            "error": s.error,
+            "started_at": s.started_at,
+            "finished_at": s.finished_at,
+        }
+
+    return StreamingResponse(_sse_stream(snapshot), media_type="text/event-stream", headers=_SSE_HEADERS)
