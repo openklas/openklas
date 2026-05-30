@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo.png" width="160" />
+
 # OpenKLAS MCP
 
 An open-source FastAPI backend that wraps [KLAS](https://klas.kw.ac.kr) — Kwangwoon University's Learning Management System — and exposes it as a clean REST API with built-in MCP support for AI assistants.
