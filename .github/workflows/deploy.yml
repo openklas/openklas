@@ -16,6 +16,6 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/Projects/openklas
+            cd ~/openklas
             git pull
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
