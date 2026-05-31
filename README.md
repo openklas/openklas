@@ -8,6 +8,8 @@ An open-source FastAPI backend that wraps [KLAS](https://klas.kw.ac.kr) — Kwan
 
 > Developed by [@univerxe](https://github.com/univerxe) · Open to contributions
 
+See what OpenKLAS does and how to set it up at [openklas.com](https://openklas.com). To plug it into Claude.ai (or any MCP-compatible assistant) right now, add a custom connector with the URL `https://mcp.openklas.com/mcp` — you'll sign into KLAS once on the OpenKLAS login page and the full tool catalog becomes available.
+
 ---
 
 ## Tech Stack
@@ -35,15 +37,6 @@ An open-source FastAPI backend that wraps [KLAS](https://klas.kw.ac.kr) — Kwan
 - **Recorded Lecture Pipeline** — download → Whisper transcribe → Claude summarize → save to Obsidian
 - **RAG** — ingest lecture PDFs, query them with Voyage AI embeddings + pgvector + Ollama
 - **Autocomplete** — automated lecture progress completion
-
-## Quick Start
-
-```bash
-cp .env.example .env   # fill in KLAS URLs, DB, API keys
-docker compose up
-```
-
-API: `http://localhost:8000` · Docs: `http://localhost:8000/docs`
 
 ## Contributing
 
