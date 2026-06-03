@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 KWCOMMONS_BASE = "https://kwcommons.kw.ac.kr"
 OBSIDIAN_COURSES_PATH = settings.OBSIDIAN_COURSES_PATH
 
+# Strip ASCII control chars (except \t \n \r) that make JSON parsers fail.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _strip_control_chars(text: str) -> str:
+    return _CONTROL_CHARS_RE.sub("", text)
+
 
 # ── In-memory job state ───────────────────────────────────────────────────────
 
@@ -176,7 +183,7 @@ def _transcribe(video_path: str) -> str:
                 language="ko",
                 response_format="text",
             )
-        return (resp if isinstance(resp, str) else resp.text).strip()
+        return _strip_control_chars((resp if isinstance(resp, str) else resp.text).strip())
     finally:
         if os.path.exists(audio_path):
             os.unlink(audio_path)
@@ -417,7 +424,7 @@ def _transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
         language="ko",
         response_format="text",
     )
-    return (resp if isinstance(resp, str) else resp.text).strip()
+    return _strip_control_chars((resp if isinstance(resp, str) else resp.text).strip())
 
 
 def _run_record_pipeline(
