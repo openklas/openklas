@@ -1,6 +1,8 @@
 """
 Authentication endpoints
 """
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Depends, Request, status, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -33,9 +35,9 @@ async def login(request: Request, body: LoginRequest, db: DbSession):
     Automatically creates or updates user in database
     """
     try:
-        # Initialize KLAS service and login
+        # Initialize KLAS service and login (blocking sync — run in thread)
         klas = KLASService()
-        success = klas.login(body.student_id, body.password)
+        success = await asyncio.to_thread(klas.login, body.student_id, body.password)
         
         if success:
             # Fetch profile data from KLAS

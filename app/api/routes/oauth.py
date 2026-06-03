@@ -12,6 +12,7 @@ Flow:
   5. Claude exchanges code: POST /oauth/token → gets long-lived access_token
   6. Claude uses access_token as Bearer for all MCP tool calls
 """
+import asyncio
 import hashlib
 import base64
 import secrets
@@ -344,9 +345,10 @@ async def authorize_submit(
     code_challenge_method: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
-    # Authenticate against KLAS
+    # Authenticate against KLAS (blocking sync — run in thread so event loop stays alive)
     klas = KLASService()
-    if not klas.login(student_id, password):
+    login_ok = await asyncio.to_thread(klas.login, student_id, password)
+    if not login_ok:
         return HTMLResponse(
             _render_login(
                 client_id=client_id,

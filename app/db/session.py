@@ -11,9 +11,10 @@ elif "&pgbouncer=" in db_url:
 # Create engine with statement_cache_size=0 for pgbouncer compatibility
 # This prevents "prepared statement already exists" errors when using pgbouncer
 engine = create_async_engine(
-    db_url, 
+    db_url,
     echo=False,
-    connect_args={"statement_cache_size": 0}
+    pool_pre_ping=True,
+    connect_args={"statement_cache_size": 0},
 )
 AsyncSessionLocal = async_sessionmaker(
     engine,
