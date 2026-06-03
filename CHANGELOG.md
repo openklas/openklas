@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### perf(summarize): stream MP4 to disk + semaphore guard for 4GB RAM server
+
+Two changes to prevent the video summarization pipeline from OOMing the 4GB Lightsail server:
+
+1. **Streaming download** — `_download_mp4` no longer calls `resp.body()` (which loaded the entire MP4 into RAM). It now makes a HEAD-style check via Playwright's `page.request.get`, extracts session cookies from the Playwright context, closes the browser, then streams the file to a temp path via `httpx.AsyncClient` in 1MB chunks. Video bytes never fully occupy RAM.
+
+2. **Semaphore** — `_pipeline_semaphore = asyncio.Semaphore(1)` ensures at most one pipeline runs at a time. Concurrent summarize requests now queue rather than launching parallel Playwright + download jobs that together would exhaust memory.
+
+The public `_run_pipeline` function was split into a thin semaphore wrapper + `_run_pipeline_inner` (the original logic) to keep control flow clear.
+
+**Changed files:**
+- `app/services/summarize_service.py` — streaming download, semaphore, `_run_pipeline`/`_run_pipeline_inner` split
+
+---
+
 ### feat(homework): GET /api/homework/team-projects — team project list
 
 New endpoint that fetches team project assignments from KLAS `PrjctStdList.do` for a given subject code. Returns project title, dates, submission status, team number, and team purpose, sorted most-recent first.
