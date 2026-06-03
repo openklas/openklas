@@ -635,6 +635,43 @@ class KLASService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse recorded lectures response: {e}")
 
+    def get_eclass_lectures(
+        self,
+        subject_code: str,
+        year: Optional[int] = None,
+        semester: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get eclass (외부 콘텐츠) lecture list for a subject from EClassStdList.do.
+
+        Returns list sorted by serial descending (most recent first).
+
+        Raises:
+            ConnectionError: If request fails
+            ValueError: If response cannot be parsed
+        """
+        if year is None or semester is None:
+            year, semester = self.get_current_year_semester()
+
+        try:
+            response = self.session.post(
+                settings.KLAS_ECLASS_URL,
+                json={
+                    "selectYearhakgi": f"{year},{semester}",
+                    "selectSubj": subject_code,
+                    "selectChangeYn": "Y",
+                },
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data if isinstance(data, list) else []
+            return sorted(items, key=lambda x: x.get("serial", 0), reverse=True)
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Failed to fetch eclass lectures: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse eclass lectures response: {e}")
+
     def get_team_projects(self, subject_code: str, year: Optional[int] = None, semester: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Get team project list for a subject from PrjctStdList.do.

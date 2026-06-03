@@ -15,7 +15,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag, workflow, oauth
+from app.api.routes import auth, profile, timetable, homework, lectures, recorded_lectures, rag, workflow, oauth, eclass_lectures
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ app.include_router(timetable.router, prefix="/api/timetable", tags=["Timetable"]
 app.include_router(homework.router, prefix="/api/homework", tags=["Homework"])
 app.include_router(lectures.router, prefix="/api/lectures", tags=["Lectures"])
 app.include_router(recorded_lectures.router, prefix="/api/recorded-lectures", tags=["Recorded Lectures"])
+app.include_router(eclass_lectures.router, prefix="/api/eclass-lectures", tags=["EClass Lectures"])
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG"])
 app.include_router(workflow.router, prefix="/api/workflow", tags=["Workflow"])
 

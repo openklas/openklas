@@ -396,6 +396,149 @@ def start_summarize_background(
     )
 
 
+# ── EClass pipeline ──────────────────────────────────────────────────────────
+
+_eclass_statuses: dict[str, SummarizeStatus] = {}
+
+
+def get_eclass_summarize_status(student_id: str) -> SummarizeStatus:
+    return _eclass_statuses.get(student_id) or SummarizeStatus()
+
+
+def _ensure_eclass_status(student_id: str) -> SummarizeStatus:
+    s = _eclass_statuses.get(student_id)
+    if s is None:
+        s = SummarizeStatus()
+        _eclass_statuses[student_id] = s
+    return s
+
+
+async def _download_eclass_mp4(video_url: str, content_id: str, student_id: str, password: str) -> str:
+    """Download an eclass MP4 directly from kwcommons. Returns tmp file path."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--autoplay-policy=no-user-gesture-required"],
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        )
+        page = await context.new_page()
+
+        await _browser_login(page, student_id, password)
+
+        # Navigate to the kwcommons player page to establish session cookies
+        player_url = f"{KWCOMMONS_BASE}/em/{content_id}"
+        try:
+            await page.goto(player_url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(3000)
+        except Exception as e:
+            logger.warning("Could not navigate to eclass player (non-fatal): %s", e)
+
+        cookies = await context.cookies()
+        cookie_header = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+        await browser.close()
+
+    import httpx
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+    async with httpx.AsyncClient(timeout=300) as client:
+        async with client.stream("GET", video_url, headers={"Cookie": cookie_header}) as r:
+            r.raise_for_status()
+            with open(tmp_path, "wb") as f:
+                async for chunk in r.aiter_bytes(chunk_size=1024 * 1024):
+                    f.write(chunk)
+    logger.info("Streamed eclass MP4: %d bytes from %s", os.path.getsize(tmp_path), video_url)
+    return tmp_path
+
+
+async def _run_eclass_pipeline(
+    video_url: str,
+    content_id: str,
+    lecture_title: str,
+    course_title: str,
+    student_id: str,
+    password: str,
+    user_id: Optional[str] = None,
+    subject_code: Optional[str] = None,
+) -> None:
+    async with _pipeline_semaphore:
+        s = _ensure_eclass_status(student_id)
+        s.running = True
+        s.oid = content_id
+        s.title = lecture_title
+        s.error = None
+        s.transcript = None
+        s.summary = None
+        s.obsidian_path = None
+        s.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        s.finished_at = None
+
+        tmp_path: Optional[str] = None
+        try:
+            s.step = "downloading"
+            tmp_path = await _download_eclass_mp4(video_url, content_id, student_id, password)
+
+            s.step = "transcribing"
+            transcript = _transcribe(tmp_path)
+            s.transcript = transcript
+            logger.info("EClass transcript length: %d chars", len(transcript))
+
+            s.step = "summarizing"
+            summary = _summarize(transcript, lecture_title, course_title)
+            s.summary = summary
+
+            s.step = "saving"
+            obsidian_path = save_to_obsidian(summary, transcript, course_title, lecture_title, None)
+            s.obsidian_path = obsidian_path
+
+            if user_id and subject_code:
+                try:
+                    import uuid as _uuid
+                    from app.db.session import AsyncSessionLocal
+                    from app.services.rag_service import ingest_text
+                    async with AsyncSessionLocal() as db:
+                        await ingest_text(
+                            db=db,
+                            user_id=_uuid.UUID(user_id),
+                            filename=f"eclass:{subject_code}:{content_id}",
+                            text=summary,
+                            subject_code=subject_code,
+                        )
+                except Exception as rag_err:
+                    logger.warning("RAG ingest failed (non-fatal): %s", rag_err)
+
+            s.step = "done"
+        except Exception as e:
+            logger.error("EClass summarize pipeline error: %s", e, exc_info=True)
+            s.error = str(e)
+            s.step = "error"
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            s.running = False
+            s.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def start_summarize_eclass_background(
+    video_url: str,
+    content_id: str,
+    lecture_title: str,
+    course_title: str,
+    student_id: str,
+    password: str,
+    user_id: Optional[str] = None,
+    subject_code: Optional[str] = None,
+) -> None:
+    asyncio.run(
+        _run_eclass_pipeline(
+            video_url, content_id, lecture_title, course_title,
+            student_id, password, user_id, subject_code,
+        )
+    )
+
+
 # ── Record pipeline (client-uploaded audio) ───────────────────────────────────
 
 _record_statuses: dict[str, SummarizeStatus] = {}

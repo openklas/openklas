@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### feat(eclass): GET /api/eclass-lectures — eclass video lecture list
+
+New endpoint group for KLAS eclass (외부 콘텐츠) lectures served via `kwcommons.kw.ac.kr`.
+
+- `GET /api/eclass-lectures?subject_code=...` — list eclass lectures for one subject
+- `GET /api/eclass-lectures/all` — list for all enrolled subjects (timetable-derived)
+
+Each item includes `video_url` computed from `contentId` using the pattern
+`https://kwcommons.kw.ac.kr/contents5/KW10000001/{contentId}/contents/media_files/main.mp4`.
+Results are sorted by `serial` descending (most recent first).
+
+**Changed files:**
+- `app/core/config.py` — added `KLAS_ECLASS_URL`
+- `.env` — added `KLAS_ECLASS_URL`
+- `app/services/klas_service.py` — added `get_eclass_lectures()`
+- `app/schemas/eclass_lecture.py` — new schemas (`EClassLectureItem`, response models)
+- `app/api/routes/eclass_lectures.py` — new route file (list + all + summarize endpoints)
+- `app/services/summarize_service.py` — added `_download_eclass_mp4`, `_run_eclass_pipeline`, `start_summarize_eclass_background`, per-user `_eclass_statuses`
+- `main.py` — registered `/api/eclass-lectures` router
+
+---
+
 ### perf(summarize): stream MP4 to disk + semaphore guard for 4GB RAM server
 
 Two changes to prevent the video summarization pipeline from OOMing the 4GB Lightsail server:

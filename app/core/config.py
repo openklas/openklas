@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     KLAS_RECORDED_LECTURE_URL: str
     KLAS_COURSE_INFO_URL: str
     KLAS_TEAM_PROJECT_URL: str
+    KLAS_ECLASS_URL: str
     KLAS_PROFILE_URL: str
     KLAS_STUDENT_INFO_URL: str
     KLAS_STUDENT_INFO_API_URL: str 
