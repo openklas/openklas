@@ -43,6 +43,9 @@ class SummarizeStatus:
 
 _statuses: dict[str, SummarizeStatus] = {}
 
+# Only 1 pipeline at a time — Playwright + video download would OOM a 4GB server otherwise
+_pipeline_semaphore = asyncio.Semaphore(1)
+
 
 def get_summarize_status(student_id: str) -> SummarizeStatus:
     """Return the per-user summarize status, or a fresh empty one if no job has run."""
@@ -87,8 +90,8 @@ async def _browser_login(page, student_id: str, password: str) -> None:
     logger.info("Browser login done. Current URL: %s", page.url)
 
 
-async def _download_mp4(starting_url: str, code: str, student_id: str, password: str) -> tuple[bytes, str]:
-    """Return (video_bytes, url_used). Tries screen.mp4 then ssmovie.mp4."""
+async def _download_mp4(starting_url: str, code: str, student_id: str, password: str) -> tuple[str, str]:
+    """Return (tmp_file_path, url_used). Streams to disk — never loads full video in RAM."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
@@ -109,14 +112,29 @@ async def _download_mp4(starting_url: str, code: str, student_id: str, password:
         for url in _mp4_candidates(code):
             logger.info("Trying MP4 URL: %s", url)
             try:
-                resp = await page.request.get(url, timeout=180000)
-                if resp.ok:
-                    body = await resp.body()
-                    logger.info("Downloaded %d bytes from %s", len(body), url)
-                    await browser.close()
-                    return body, url
-                else:
+                resp = await page.request.get(url, timeout=10000)
+                if not resp.ok:
                     logger.warning("HTTP %s for %s", resp.status, url)
+                    continue
+
+                # Extract cookies and stream via httpx to avoid loading full video in RAM
+                cookies = await context.cookies()
+                cookie_header = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+                await browser.close()
+
+                import httpx
+                tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+                tmp_path = tmp.name
+                tmp.close()
+                async with httpx.AsyncClient(timeout=300) as client:
+                    async with client.stream("GET", url, headers={"Cookie": cookie_header}) as r:
+                        r.raise_for_status()
+                        with open(tmp_path, "wb") as f:
+                            async for chunk in r.aiter_bytes(chunk_size=1024 * 1024):
+                                f.write(chunk)
+                size = os.path.getsize(tmp_path)
+                logger.info("Streamed %d bytes from %s", size, url)
+                return tmp_path, url
             except Exception as e:
                 logger.warning("Request failed for %s: %s", url, e)
 
@@ -264,6 +282,24 @@ async def _run_pipeline(
     user_id: Optional[str] = None,
     subject_code: Optional[str] = None,
 ) -> None:
+    async with _pipeline_semaphore:
+        await _run_pipeline_inner(
+            starting_url, oid, lecture_title, course_title, week_no,
+            student_id, password, user_id, subject_code,
+        )
+
+
+async def _run_pipeline_inner(
+    starting_url: str,
+    oid: str,
+    lecture_title: str,
+    course_title: str,
+    week_no: Optional[int],
+    student_id: str,
+    password: str,
+    user_id: Optional[str] = None,
+    subject_code: Optional[str] = None,
+) -> None:
     s = _ensure_status(student_id)
     s.running = True
     s.oid = oid
@@ -281,14 +317,10 @@ async def _run_pipeline(
         if not code:
             raise ValueError(f"Cannot extract code from URL: {starting_url}")
 
-        # 1. Download
+        # 1. Download (streams to disk — no full video in RAM)
         s.step = "downloading"
-        video_bytes, mp4_url = await _download_mp4(starting_url, code, student_id, password)
-
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp.write(video_bytes)
-            tmp_path = tmp.name
-        logger.info("Saved temp video: %s (%d bytes)", tmp_path, len(video_bytes))
+        tmp_path, mp4_url = await _download_mp4(starting_url, code, student_id, password)
+        logger.info("Downloaded video to %s (%d bytes)", tmp_path, os.path.getsize(tmp_path))
 
         # 2. Transcribe
         s.step = "transcribing"
