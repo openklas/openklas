@@ -30,7 +30,7 @@ class RecordedLectureItem(BaseModel):
     lrn_pd: Optional[str] = Field(None, alias="lrnPd")           # human-readable range
 
     # Progress — KLAS sends these as strings ("38") or ints (50) depending on subject
-    prog: Optional[int] = None                                              # 0-100
+    prog: Optional[float] = None                                            # 0-100, KLAS occasionally sends fractional values (e.g. 62.79)
     learn_time: Optional[Union[str, int]] = Field(None, alias="learnTime") # minutes watched
     total_time: Optional[Union[str, int]] = Field(None, alias="totalTime") # required minutes
     rcogn_time: Optional[Union[str, int]] = Field(None, alias="rcognTime") # recognised duration
