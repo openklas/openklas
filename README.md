@@ -47,32 +47,32 @@ Connect OpenKLAS to Claude.ai once and ask anything about your courses in plain 
 ### Remaining Lectures
 One question. Every course. Aggregate progress. Claude scans every recorded-lecture board for you and reports back exactly which weeks remain in which subjects, with durations and deadlines included.
 
-![Remaining lectures](https://openklas.com/projects/10_project/feature_lectures.png)
+![Remaining lectures](assets/feature_lectures.png)
 
 ### Homework Overview
 Every deadline, ranked by what actually matters. Ask once. Get pending, overdue, and submitted assignments across every subject in a single response, sorted by deadline, with overdue items flagged.
 
-![Homework overview](https://openklas.com/projects/10_project/feature_homework.png)
+![Homework overview](assets/feature_homework.png)
 
 ### Assignment Detail
 Format, deadline, content checklist, all in one prompt. Stop opening four KLAS tabs to figure out what an assignment wants. Claude pulls the full task detail and surfaces it as a clean checklist.
 
-![Assignment detail](https://openklas.com/projects/10_project/feature_assignment.png)
+![Assignment detail](assets/feature_assignment.png)
 
 ### Email Drafting
 One English sentence in. A polite Korean email out. Need to ask for a late-submission extension? Claude looks up the assignment, finds the right professor, and drafts a respectful Korean email ready to send.
 
-![Email drafting](https://openklas.com/projects/10_project/feature_email.png)
+![Email drafting](assets/feature_email.png)
 
 ### PDF Q&A
 Talk to your lecture PDFs like they're a tutor. Upload your slides once. Ask anything later. Voyage AI embeddings + pgvector + Ollama keep the answers grounded, per-user, isolated by design.
 
-![PDF Q&A](https://openklas.com/projects/10_project/feature_pdf_qa.png)
+![PDF Q&A](assets/feature_pdf_qa.png)
 
 ### Lecture Summarization
 From an hour-long video to study-ready notes. Download → Whisper transcription → Claude-written summary, optionally saved straight to your Obsidian vault. Walk into class already prepped.
 
-![Lecture summarization](https://openklas.com/projects/10_project/feature_summarize.png)
+![Lecture summarization](assets/feature_summarize.png)
 
 ---
 
