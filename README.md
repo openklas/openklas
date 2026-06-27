@@ -12,6 +12,49 @@ See what OpenKLAS does and how to set it up at [openklas.com](https://openklas.c
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://openklas.com/projects/10_project/feature_lectures.png" alt="Lectures left to watch" />
+      <br/>
+      <sub><b>Remaining lectures</b> — One question. Every course. Aggregate progress. Claude scans every recorded-lecture board for you and reports back exactly which weeks remain in which subjects, with durations and deadlines included.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://openklas.com/projects/10_project/feature_homework.png" alt="Homework status across all subjects" />
+      <br/>
+      <sub><b>Homework overview</b> — Every deadline, ranked by what actually matters. Ask once. Get pending, overdue, and submitted assignments across every subject in a single response, sorted by deadline, with overdue items flagged.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://openklas.com/projects/10_project/feature_assignment.png" alt="Assignment detail checklist" />
+      <br/>
+      <sub><b>Assignment detail</b> — Format, deadline, content checklist, all in one prompt. Stop opening four KLAS tabs to figure out what an assignment wants. Claude pulls the full task detail and surfaces it as a clean checklist.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://openklas.com/projects/10_project/feature_email.png" alt="Korean email draft for late submission" />
+      <br/>
+      <sub><b>Email drafting</b> — One English sentence in. A polite Korean email out. Need to ask for a late-submission extension? Claude looks up the assignment, finds the right professor, and drafts a respectful Korean email ready to send.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://openklas.com/projects/10_project/feature_pdf_qa.png" alt="PDF Q&A from lecture slides" />
+      <br/>
+      <sub><b>PDF Q&amp;A</b> — Talk to your lecture PDFs like they're a tutor. Upload your slides once. Ask anything later. Voyage AI embeddings + pgvector + Ollama keep the answers grounded, per-user, isolated by design.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://openklas.com/projects/10_project/feature_summarize.png" alt="Video lecture summarization" />
+      <br/>
+      <sub><b>Lecture summarization</b> — From an hour-long video to study-ready notes. Download → Whisper transcription → Claude-written summary, optionally saved straight to your Obsidian vault. Walk into class already prepped.</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## Tech Stack
 
 <p>
