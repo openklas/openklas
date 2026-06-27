@@ -83,32 +83,32 @@ From an hour-long video to study-ready notes. Download → Whisper transcription
 ```mermaid
 graph TD
     subgraph Clients
-        A[Claude.ai / Claude Desktop]
-        B[Browser / REST client]
+        A[Claude.ai\nClaude Desktop]
+        B[Browser\nREST API Client]
     end
 
-    subgraph OpenKLAS["OpenKLAS Backend (FastAPI)"]
-        MCP[MCP Server\nSSE /mcp]
-        OAuth[OAuth 2.0\n/oauth/*]
-        API[REST API\n/api/*]
+    subgraph OpenKLAS["OpenKLAS · FastAPI"]
+        MCP[MCP Server\nSSE · /mcp]
+        OAuth[OAuth 2.0\n/oauth/* routes]
+        API[REST API\n/api/* routes]
         BG[Background Tasks\nsummarize · autocomplete]
     end
 
-    subgraph Session["Session Layer"]
-        Redis[(Redis\nsession store)]
+    subgraph Storage["Storage"]
+        Redis[(Redis\nSession Store)]
         PG[(PostgreSQL\n+ pgvector)]
     end
 
     subgraph External["External Services"]
-        KLAS[klas.kw.ac.kr\nKLAS LMS]
-        KWC[kwcommons.kw.ac.kr\nvideo CDN]
-        Groq[Groq\nWhisper API]
-        Anthropic[Anthropic\nClaude API]
-        Voyage[Voyage AI\nEmbeddings]
+        KLAS[KLAS LMS\nklas.kw.ac.kr]
+        KWC[Video CDN\nkwcommons.kw.ac.kr]
+        Groq[Groq Whisper\nwhisper-large-v3]
+        Anthropic[Anthropic\nClaude claude-sonnet]
+        Voyage[Voyage AI\nvoyage-3 · 1024-dim]
     end
 
     subgraph Infra["Infrastructure"]
-        Caddy[Caddy\nreverse proxy / TLS]
+        Caddy[Caddy\nReverse Proxy · TLS]
     end
 
     A -->|OAuth Bearer / SSE| Caddy
@@ -165,24 +165,24 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A([POST /api/recorded-lectures/summarize]) --> B[Validate — no job running\ncheck semaphore]
+    A([POST /summarize\nstart pipeline]) --> B[Validate request\nno job already running]
     B --> C[Return 202 Accepted\nbackground job started]
     C --> D[Acquire semaphore\nmax 1 pipeline at a time]
-    D --> E[Playwright: browser login\nklas.kw.ac.kr]
-    E --> F[Navigate to player\nkwcommons.kw.ac.kr/em/code]
-    F --> G[Extract session cookies]
-    G --> H[httpx stream download\n1 MB chunks → tmp .mp4]
-    H --> I[ffmpeg: extract audio\n16kHz mono MP3]
-    I --> J[Groq Whisper API\nwhisper-large-v3-turbo]
-    J --> K[Strip control chars\nfrom transcript]
-    K --> L[Claude claude-sonnet-4-6\nstructured summary]
+    D --> E[Browser login\nPlaywright · klas.kw.ac.kr]
+    E --> F[Navigate to player\nkwcommons · /em/code]
+    F --> G[Extract cookies\nfrom browser context]
+    G --> H[Stream download\nhttpx · 1 MB chunks · .mp4]
+    H --> I[Extract audio\nffmpeg · 16kHz mono MP3]
+    I --> J[Transcribe audio\nGroq Whisper API]
+    J --> K[Sanitize transcript\nstrip control characters]
+    K --> L[Summarize\nClaude claude-sonnet-4-6]
     L --> M{Save to Obsidian?}
-    M -->|yes| N[Write .md to vault\ncourse/lectures/WN-title.md]
-    M -->|no| O([step=done])
+    M -->|yes| N[Write to vault\ncourse/lectures/WN-title.md]
+    M -->|no| O([Pipeline complete\nstep = done])
     N --> O
 
-    P([GET /summarize/status]) -.->|poll| Q[SummarizeStatus\nstep · transcript · summary]
-    P2([GET /summarize/status/stream]) -.->|SSE push| Q
+    P([GET /summarize/status\npoll endpoint]) -.->|poll| Q[SummarizeStatus\nstep · transcript · summary]
+    P2([GET /summarize/status/stream\nSSE endpoint]) -.->|SSE push| Q
 ```
 
 ### RAG Pipeline
@@ -190,19 +190,19 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph Ingest
-        A([POST /api/rag/ingest\nPDF upload]) --> B[Extract text\npage by page]
-        B --> C[Semantic chunking]
-        C --> D[Voyage AI\nvoyage-3 embeddings\n1024-dim]
-        D --> E[(pgvector\nDocumentChunks)]
+        A([POST /api/rag/ingest\nupload PDF]) --> B[Extract text\npage by page]
+        B --> C[Chunk text\nsemantic splitting]
+        C --> D[Voyage AI embed\nvoyage-3 · 1024-dim]
+        D --> E[(pgvector store\nDocumentChunks)]
     end
 
     subgraph Query
-        F([POST /api/rag/query\nquestion]) --> G[Voyage AI\nembed question]
-        G --> H[pgvector cosine\nnearest-neighbor search]
+        F([POST /api/rag/query\nask a question]) --> G[Embed question\nVoyage AI · query mode]
+        G --> H[Cosine search\npgvector top-k chunks]
         E --> H
-        H --> I[Top-k chunks\nas context]
-        I --> J[Claude\ngrounded answer]
-        J --> K([response])
+        H --> I[Build context\ntop-k chunk text]
+        I --> J[Claude API\ngrounded answer]
+        J --> K([Return answer\nto client])
     end
 
     Ingest --> Query
