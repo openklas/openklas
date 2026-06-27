@@ -164,6 +164,7 @@ sequenceDiagram
 ### Recorded Lecture Summarization Pipeline
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "11px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 30}}}%%
 flowchart TD
     A([POST /summarize\nstart pipeline]) --> B[Validate request\nno job already running]
     B --> C[Return 202 Accepted\nbackground job started]
@@ -188,6 +189,7 @@ flowchart TD
 ### RAG Pipeline
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "11px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 30}}}%%
 flowchart TD
     subgraph Ingest
         A([POST /api/rag/ingest\nupload PDF]) --> B[Extract text\npage by page]
